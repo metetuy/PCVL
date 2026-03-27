@@ -5,7 +5,10 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
+    @ObservedObject var statsManager: StatisticsManager
+
     @AppStorage("alwaysOnTop") private var alwaysOnTop: Bool = false
+    @State private var showingResetAlert = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -19,6 +22,9 @@ struct SettingsView: View {
 
                 // Window behavior
                 behaviorSection
+
+                // Data management
+                resetButton
 
                 Spacer()
 
@@ -212,6 +218,35 @@ struct SettingsView: View {
             .padding(.vertical, 8)
             .background(theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    // MARK: - Data Management
+
+    private var resetButton: some View {
+        Button {
+            showingResetAlert = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "trash")
+                    .font(.system(size: 11))
+                Text("Reset Statistics")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundColor(Color(nsColor: NSColor(red: 0.85, green: 0.4, blue: 0.2, alpha: 1)))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color.orange.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .alert("Reset Statistics", isPresented: $showingResetAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                statsManager.deleteAllSessions()
+            }
+        } message: {
+            Text("Are you sure you want to delete all session records? This action cannot be undone.")
         }
     }
 

@@ -58,6 +58,16 @@ class StatisticsManager: ObservableObject {
 
     // MARK: - Record
 
+    func deleteAllSessions() {
+        do {
+            try modelContext.delete(model: SessionRecord.self)
+            try modelContext.save()
+            objectWillChange.send()
+        } catch {
+            print("Failed to delete all sessions: \(error)")
+        }
+    }
+
     func recordSession(duration: Int, date: Date, type: SessionType) {
         let record = SessionRecord(duration: duration, date: date, type: type)
         modelContext.insert(record)

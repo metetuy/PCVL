@@ -41,7 +41,8 @@ struct PopoverView: View {
                 case .settings:
                     SettingsView(
                         viewModel: viewModel,
-                        theme: themeManager
+                        theme: themeManager,
+                        statsManager: statsManager
                     )
                 }
             }
