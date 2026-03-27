@@ -2,36 +2,104 @@ import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var panelWindow: NSPanel!
+    private let viewModel = TimerViewModel()
+    private let themeManager = ThemeManager()
+    private let statsManager = StatisticsManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "PCVL Timer")
-            button.action = #selector(togglePopover)
+            let icon = NSImage(named: "MenuBarIcon")
+            icon?.size = NSSize(width: 18, height: 18)
+            button.image = icon
+            button.action = #selector(togglePanel)
             button.target = self
         }
 
-        popover = NSPopover()
-        popover.contentSize = NSSize(width: 320, height: 420)
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView())
+        viewModel.setStatisticsManager(statsManager)
+
+        let contentView = PopoverView(
+            viewModel: viewModel,
+            themeManager: themeManager,
+            statsManager: statsManager,
+            onToggleFullscreen: { [weak self] in self?.toggleFullscreen() }
+        )
+
+        panelWindow = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 260),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
+        panelWindow.isFloatingPanel = alwaysOnTop
+        panelWindow.level = alwaysOnTop ? .floating : .normal
+        panelWindow.isOpaque = true
+        panelWindow.backgroundColor = .clear
+        panelWindow.hasShadow = false
+        panelWindow.isMovableByWindowBackground = true
+        panelWindow.isReleasedWhenClosed = false
+        panelWindow.animationBehavior = .utilityWindow
+        panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        panelWindow.contentView = NSHostingView(rootView: contentView)
+
+        positionWindowNearStatusItem()
     }
 
-    @objc private func togglePopover() {
-        guard let button = statusItem.button else { return }
-
-        if popover.isShown {
-            popover.performClose(nil)
+    @objc private func togglePanel() {
+        if panelWindow.isVisible {
+            panelWindow.orderOut(nil)
         } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            positionWindowNearStatusItem()
+            panelWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    private func positionWindowNearStatusItem() {
+        guard let button = statusItem.button,
+              let buttonWindow = button.window else { return }
+
+        let buttonRect = button.convert(button.bounds, to: nil)
+        let screenRect = buttonWindow.convertToScreen(buttonRect)
+
+        let windowSize = panelWindow.frame.size
+        let x = screenRect.midX - windowSize.width / 2
+        let y = screenRect.minY - windowSize.height - 4
+
+        panelWindow.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    func toggleFullscreen() {
+        if (panelWindow.screen ?? NSScreen.main) != nil {
+            if panelWindow.styleMask.contains(.fullScreen) {
+                panelWindow.toggleFullScreen(nil)
+            } else {
+                panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
+                panelWindow.toggleFullScreen(nil)
+            }
+        }
+    }
+
+    func setAlwaysOnTop(_ enabled: Bool) {
+        panelWindow.isFloatingPanel = enabled
+        panelWindow.level = enabled ? .floating : .normal
     }
 
     func updateMenuBarIcon(isRunning: Bool) {
         guard let button = statusItem.button else { return }
-        let symbolName = isRunning ? "timer.circle.fill" : "timer"
-        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "PCVL Timer")
+        if isRunning {
+            // Show a filled circle when timer is running
+            button.image = nil
+            button.title = "●"
+        } else {
+            let icon = NSImage(named: "MenuBarIcon")
+            icon?.size = NSSize(width: 18, height: 18)
+            button.image = icon
+            button.title = ""
+        }
     }
 }

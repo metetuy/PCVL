@@ -1,59 +1,66 @@
 import Foundation
 
-enum TimerMode {
-    case countdown
-    case stopwatch
+// MARK: - Timer Mode
+
+enum TimerMode: String, CaseIterable {
+    case countDown = "Count Down"
+    case countUp = "Count Up"
 }
+
+// MARK: - Timer State
 
 enum TimerState {
     case idle
     case running
     case paused
+    case completed
 }
 
+// MARK: - Timer Engine
+
 struct TimerEngine {
-    var mode: TimerMode = .countdown
+    var mode: TimerMode = .countDown
     var state: TimerState = .idle
-
-    // Countdown
-    var totalSeconds: Int = 25 * 60
-    var remainingSeconds: Int = 25 * 60
-
-    // Stopwatch
     var elapsedSeconds: Int = 0
+    var targetSeconds: Int = 1500 // 25 minutes default
 
-    var displaySeconds: Int {
-        switch mode {
-        case .countdown: return remainingSeconds
-        case .stopwatch: return elapsedSeconds
-        }
+    // MARK: - Computed Properties
+
+    /// Remaining seconds for countdown mode
+    var remainingSeconds: Int {
+        max(targetSeconds - elapsedSeconds, 0)
     }
 
-    var formattedTime: String {
-        let seconds = displaySeconds
-        let m = seconds / 60
-        let s = seconds % 60
-        return String(format: "%02d:%02d", m, s)
-    }
-
+    /// Progress from 0.0 to 1.0 for countdown ring animation
     var progress: Double {
-        guard mode == .countdown, totalSeconds > 0 else { return 0 }
-        return Double(totalSeconds - remainingSeconds) / Double(totalSeconds)
+        guard targetSeconds > 0 else { return 0 }
+        return min(Double(elapsedSeconds) / Double(targetSeconds), 1.0)
     }
 
-    var isFinished: Bool {
-        mode == .countdown && remainingSeconds <= 0
+    /// Formatted time string — shows remaining for countdown, elapsed for countup
+    var formattedTime: String {
+        let totalSeconds = mode == .countDown ? remainingSeconds : elapsedSeconds
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return String(format: "%d:%02d", m, s)
     }
+
+    /// Short formatted time for menu bar display
+    var shortFormattedTime: String {
+        let totalSeconds = mode == .countDown ? remainingSeconds : elapsedSeconds
+        let m = totalSeconds / 60
+        let s = totalSeconds % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    // MARK: - Mutations
 
     mutating func tick() {
         guard state == .running else { return }
-        switch mode {
-        case .countdown:
-            if remainingSeconds > 0 {
-                remainingSeconds -= 1
-            }
-        case .stopwatch:
-            elapsedSeconds += 1
+        elapsedSeconds += 1
+
+        if mode == .countDown && elapsedSeconds >= targetSeconds {
+            state = .completed
         }
     }
 
@@ -67,12 +74,16 @@ struct TimerEngine {
 
     mutating func reset() {
         state = .idle
-        remainingSeconds = totalSeconds
         elapsedSeconds = 0
     }
 
-    mutating func setDuration(minutes: Int) {
-        totalSeconds = minutes * 60
-        remainingSeconds = totalSeconds
+    mutating func setMode(_ newMode: TimerMode) {
+        guard state == .idle else { return }
+        mode = newMode
+    }
+
+    mutating func setTarget(seconds: Int) {
+        guard state == .idle else { return }
+        targetSeconds = max(60, seconds) // Minimum 1 minute
     }
 }
