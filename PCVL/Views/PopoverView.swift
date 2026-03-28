@@ -48,7 +48,7 @@ struct PopoverView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 380, height: 260)
+        .frame(width: 280, height: 140)
         .background(themeManager.colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }

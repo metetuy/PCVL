@@ -7,10 +7,12 @@ import UserNotifications
 class TimerViewModel: ObservableObject {
     @Published var engine = TimerEngine()
     @Published var isBreak: Bool = false
+    
 
     private var timer: Timer?
     private var sessionStartDate: Date?
     private var statisticsManager: StatisticsManager?
+    var menuBarUpdater: ((String, Bool) -> Void)?
 
     // Persisted durations (in seconds)
     var workDuration: Int {
@@ -125,16 +127,20 @@ class TimerViewModel: ObservableObject {
 
     private func startTimer() {
         stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.engine.tick()
+
+                self.updateMenuBarIcon()
 
                 if self.engine.state == .completed {
                     self.handleCompletion()
                 }
             }
         }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     private func stopTimer() {
@@ -186,9 +192,8 @@ class TimerViewModel: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 
-    private func updateMenuBarIcon() {
-        guard let delegate = NSApp.delegate as? AppDelegate else { return }
-        delegate.updateMenuBarIcon(isRunning: isRunning)
+    func updateMenuBarIcon() {
+        menuBarUpdater?(engine.shortFormattedTime, isRunning)
     }
 }
 

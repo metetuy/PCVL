@@ -193,29 +193,32 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("WINDOW")
 
-            HStack {
-                Image(systemName: "pin")
-                    .font(.system(size: 12))
-                    .foregroundColor(theme.colors.accent)
-                    .frame(width: 20)
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "pin")
+                        .font(.system(size: 12))
+                        .foregroundColor(theme.colors.accent)
+                        .frame(width: 20)
 
-                Text("Always on Top")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(theme.colors.text)
+                    Text("Always on Top")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(theme.colors.text)
 
-                Spacer()
+                    Spacer()
 
-                Toggle("", isOn: $alwaysOnTop)
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .onChange(of: alwaysOnTop) { _, newValue in
-                        if let delegate = NSApp.delegate as? AppDelegate {
-                            delegate.setAlwaysOnTop(newValue)
+                    Toggle("", isOn: $alwaysOnTop)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .onChange(of: alwaysOnTop) { _, newValue in
+                            if let delegate = NSApp.delegate as? AppDelegate {
+                                delegate.setAlwaysOnTop(newValue)
+                            }
                         }
-                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
             .background(theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }

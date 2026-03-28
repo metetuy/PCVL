@@ -9,11 +9,10 @@ struct TimerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Mode toggle — compact, top-left
+            // Top row: mode toggle + label
             HStack {
                 modeToggle
                 Spacer()
-                // Mode label
                 Text(viewModel.modeLabel)
                     .font(.system(size: 8, weight: .semibold))
                     .tracking(1.5)
@@ -24,18 +23,18 @@ struct TimerView: View {
 
             Spacer()
 
-            // Main content — horizontal: reset | ring | fullscreen
-            HStack(spacing: 16) {
-                // Reset button — left side
+            // Center: reset | time + progress line | fullscreen
+            HStack(spacing: 12) {
+                // Reset button
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         viewModel.reset()
                     }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                         .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
                         .clipShape(Circle())
                 }
@@ -43,8 +42,8 @@ struct TimerView: View {
                 .disabled(viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 0.3 : 1)
 
-                // Timer ring — clickable to start/pause
-                timerRing
+                // Timer display — clickable
+                timerDisplay
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             if viewModel.isCompleted {
@@ -61,19 +60,20 @@ struct TimerView: View {
                         }
                     }
 
-                // Fullscreen button — right side
+                // Fullscreen button
                 Button {
                     onToggleFullscreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.horizontal, 16)
 
             Spacer()
         }
@@ -111,49 +111,50 @@ struct TimerView: View {
         .clipShape(Capsule())
     }
 
-    // MARK: - Timer Ring
+    // MARK: - Timer Display (time + progress line)
 
-    private var timerRing: some View {
-        let ringSize: CGFloat = 150
+    private var timerDisplay: some View {
+        VStack(spacing: 6) {
+            // Time text
+            Text(viewModel.engine.formattedTime)
+                .font(.system(size: 32, weight: .thin, design: .monospaced))
+                .foregroundColor(theme.colors.text)
+                .contentTransition(.numericText())
 
-        return ZStack {
-            // Track
-            Circle()
-                .stroke(theme.colors.ringTrack, lineWidth: 3)
-                .frame(width: ringSize, height: ringSize)
+            // Progress line
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    // Track
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(theme.colors.ringTrack)
+                        .frame(height: 3)
 
-            // Progress fill (countdown only)
-            if viewModel.mode == .countDown {
-                Circle()
-                    .trim(from: 0, to: viewModel.engine.progress)
-                    .stroke(
-                        viewModel.isBreak ? theme.colors.breakRing : theme.colors.timerRing,
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                    )
-                    .frame(width: ringSize, height: ringSize)
-                    .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 0.3), value: viewModel.engine.progress)
-            }
-
-            // Time display
-            VStack(spacing: 2) {
-                Text(viewModel.engine.formattedTime)
-                    .font(.system(size: ringSize * 0.22, weight: .thin, design: .monospaced))
-                    .foregroundColor(theme.colors.text)
-                    .contentTransition(.numericText())
-
-                // Tap hint when idle
-                if viewModel.isIdle {
-                    Text("tap to start")
-                        .font(.system(size: 8))
-                        .foregroundColor(theme.colors.textSecondary.opacity(0.6))
-                } else if viewModel.isPaused {
-                    Text("tap to resume")
-                        .font(.system(size: 8))
-                        .foregroundColor(theme.colors.textSecondary.opacity(0.6))
+                    // Fill (countdown only)
+                    if viewModel.mode == .countDown {
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(viewModel.isBreak ? theme.colors.breakRing : theme.colors.timerRing)
+                            .frame(width: geo.size.width * viewModel.engine.progress, height: 3)
+                            .animation(.linear(duration: 0.3), value: viewModel.engine.progress)
+                    }
                 }
             }
+            .frame(height: 3)
+
+            // Tap hint
+            if viewModel.isIdle {
+                Text("tap to start")
+                    .font(.system(size: 7))
+                    .foregroundColor(theme.colors.textSecondary.opacity(0.5))
+            } else if viewModel.isPaused {
+                Text("tap to resume")
+                    .font(.system(size: 7))
+                    .foregroundColor(theme.colors.textSecondary.opacity(0.5))
+            } else {
+                Text(" ")
+                    .font(.system(size: 7))
+            }
         }
-        .contentShape(Circle())
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 }

@@ -8,6 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let statsManager = StatisticsManager()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
@@ -19,6 +20,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         viewModel.setStatisticsManager(statsManager)
+        viewModel.menuBarUpdater = { [weak self] time, isRunning in
+            self?.updateMenuBar(time: time, isRunning: isRunning)
+        }
 
         let contentView = PopoverView(
             viewModel: viewModel,
@@ -28,7 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         panelWindow = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 260),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 140),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -54,9 +58,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             panelWindow.orderOut(nil)
         } else {
             positionWindowNearStatusItem()
-            panelWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            panelWindow.orderFront(nil)
         }
+        viewModel.updateMenuBarIcon()
     }
 
     private func positionWindowNearStatusItem() {
@@ -89,17 +93,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow.level = enabled ? .floating : .normal
     }
 
-    func updateMenuBarIcon(isRunning: Bool) {
+    func updateMenuBar(time: String, isRunning: Bool) {
         guard let button = statusItem.button else { return }
-        if isRunning {
-            // Show a filled circle when timer is running
-            button.image = nil
-            button.title = "●"
+        
+        let showTimer = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
+        
+        // Icon always stays
+        let icon = NSImage(named: "MenuBarIcon")
+        icon?.size = NSSize(width: 18, height: 18)
+        button.image = icon
+        
+        if showTimer && isRunning {
+            // Show live timer to the left of icon
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+            button.title = "\(time) "
+            button.imagePosition = .imageRight
         } else {
-            let icon = NSImage(named: "MenuBarIcon")
-            icon?.size = NSSize(width: 18, height: 18)
-            button.image = icon
+            // Just the icon, no text
             button.title = ""
+            button.imagePosition = .imageOnly
         }
     }
 }
