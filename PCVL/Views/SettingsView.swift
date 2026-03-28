@@ -8,6 +8,7 @@ struct SettingsView: View {
     @ObservedObject var statsManager: StatisticsManager
 
     @AppStorage("alwaysOnTop") private var alwaysOnTop: Bool = false
+    @AppStorage("showTimerInMenuBar") private var showTimerInMenuBar: Bool = false
     @State private var showingResetAlert = false
 
     var body: some View {
@@ -213,6 +214,30 @@ struct SettingsView: View {
                             if let delegate = NSApp.delegate as? AppDelegate {
                                 delegate.setAlwaysOnTop(newValue)
                             }
+                        }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+                Divider().background(theme.colors.ringTrack)
+
+                HStack {
+                    Image(systemName: "menubar.rectangle")
+                        .font(.system(size: 12))
+                        .foregroundColor(theme.colors.accent)
+                        .frame(width: 20)
+
+                    Text("Timer in Menu Bar")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(theme.colors.text)
+
+                    Spacer()
+
+                    Toggle("", isOn: $showTimerInMenuBar)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .onChange(of: showTimerInMenuBar) { _, _ in
+                            viewModel.updateMenuBarIcon()
                         }
                 }
                 .padding(.horizontal, 12)
