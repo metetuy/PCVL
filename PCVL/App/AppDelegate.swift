@@ -41,9 +41,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         panelWindow.isFloatingPanel = alwaysOnTop
         panelWindow.level = alwaysOnTop ? .statusBar : .normal
-        panelWindow.isOpaque = true
+        panelWindow.isOpaque = false
         panelWindow.backgroundColor = .clear
-        panelWindow.hasShadow = false
+        panelWindow.hasShadow = true
         panelWindow.isMovableByWindowBackground = true
         panelWindow.isReleasedWhenClosed = false
         panelWindow.animationBehavior = .utilityWindow

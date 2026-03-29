@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Tab Enum
 
-enum AppTab {
+enum AppTab: CaseIterable {
     case timer
     case stats
     case settings
@@ -17,6 +17,7 @@ struct PopoverView: View {
     var onToggleFullscreen: () -> Void
 
     @State private var selectedTab: AppTab = .timer
+    @State private var swipeDelta: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,8 +48,13 @@ struct PopoverView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(SwipeGestureView { direction in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    switchTab(direction)
+                }
+            })
         }
-        .frame(width: 280, height: 140)
+        .frame(width: 280, height: 180)
         .background(themeManager.colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -82,5 +88,63 @@ struct PopoverView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private func switchTab(_ direction: SwipeDirection) {
+        let tabs = AppTab.allCases
+        guard let idx = tabs.firstIndex(of: selectedTab) else { return }
+        switch direction {
+        case .left:
+            if idx < tabs.count - 1 { selectedTab = tabs[idx + 1] }
+        case .right:
+            if idx > 0 { selectedTab = tabs[idx - 1] }
+        }
+    }
+}
+
+// MARK: - Swipe Gesture
+
+enum SwipeDirection {
+    case left, right
+}
+
+struct SwipeGestureView: NSViewRepresentable {
+    var onSwipe: (SwipeDirection) -> Void
+
+    func makeNSView(context: Context) -> SwipeNSView {
+        let view = SwipeNSView()
+        view.onSwipe = onSwipe
+        return view
+    }
+
+    func updateNSView(_ nsView: SwipeNSView, context: Context) {
+        nsView.onSwipe = onSwipe
+    }
+}
+
+class SwipeNSView: NSView {
+    var onSwipe: ((SwipeDirection) -> Void)?
+    private var accumulatedDeltaX: CGFloat = 0
+    private let threshold: CGFloat = 30
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard event.momentumPhase == .init(rawValue: 0) else { return }
+
+        if event.phase == .began {
+            accumulatedDeltaX = 0
+        }
+
+        accumulatedDeltaX += event.scrollingDeltaX
+
+        if event.phase == .ended || event.phase == .cancelled {
+            if accumulatedDeltaX > threshold {
+                onSwipe?(.right)
+            } else if accumulatedDeltaX < -threshold {
+                onSwipe?(.left)
+            }
+            accumulatedDeltaX = 0
+        }
     }
 }
