@@ -61,7 +61,7 @@ struct PopoverView: View {
             tabButton(tab: .stats, icon: "chart.bar")
             tabButton(tab: .settings, icon: "gear")
         }
-        .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
+        .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)
         .padding(.horizontal, 8)
     }
 
@@ -72,8 +72,9 @@ struct PopoverView: View {
             }
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
                 .foregroundColor(
                     selectedTab == tab
                         ? themeManager.colors.accent

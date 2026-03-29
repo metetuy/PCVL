@@ -15,8 +15,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let icon = NSImage(named: "MenuBarIcon")
             icon?.size = NSSize(width: 18, height: 18)
             button.image = icon
-            button.action = #selector(togglePanel)
+            button.action = #selector(handleStatusItemClick)
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         viewModel.setStatisticsManager(statsManager)
@@ -39,7 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         panelWindow.isFloatingPanel = alwaysOnTop
-        panelWindow.level = alwaysOnTop ? .floating : .normal
+        panelWindow.level = alwaysOnTop ? .statusBar : .normal
         panelWindow.isOpaque = true
         panelWindow.backgroundColor = .clear
         panelWindow.hasShadow = false
@@ -53,7 +54,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         positionWindowNearStatusItem()
     }
 
-    @objc private func togglePanel() {
+    // MARK: - Status Item Click Handling
+
+    @objc private func handleStatusItemClick() {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp {
+            showContextMenu()
+        } else {
+            togglePanel()
+        }
+    }
+
+    private func togglePanel() {
         if panelWindow.isVisible {
             panelWindow.orderOut(nil)
         } else {
@@ -62,6 +74,138 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         viewModel.updateMenuBarIcon()
     }
+
+    // MARK: - Context Menu
+
+    private func showContextMenu() {
+        let menu = NSMenu()
+
+        // Timer durations
+        let workItem = NSMenuItem(title: "Work: \(viewModel.workDuration / 60) min", action: nil, keyEquivalent: "")
+        let workMenu = NSMenu()
+        for mins in stride(from: 30, through: 120, by: 15) {
+            let item = NSMenuItem(title: "\(mins) min", action: #selector(setWorkDuration(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = mins
+            if mins == viewModel.workDuration / 60 {
+                item.state = .on
+            }
+            workMenu.addItem(item)
+        }
+        workItem.submenu = workMenu
+        menu.addItem(workItem)
+
+        let breakItem = NSMenuItem(title: "Break: \(viewModel.breakDuration / 60) min", action: nil, keyEquivalent: "")
+        let breakMenu = NSMenu()
+        for mins in stride(from: 5, through: 30, by: 5) {
+            let item = NSMenuItem(title: "\(mins) min", action: #selector(setBreakDuration(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = mins
+            if mins == viewModel.breakDuration / 60 {
+                item.state = .on
+            }
+            breakMenu.addItem(item)
+        }
+        breakItem.submenu = breakMenu
+        menu.addItem(breakItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Theme picker
+        let themeItem = NSMenuItem(title: "Theme", action: nil, keyEquivalent: "")
+        let themeMenu = NSMenu()
+        for appTheme in AppTheme.allCases {
+            let item = NSMenuItem(title: appTheme.rawValue, action: #selector(setTheme(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = appTheme
+            if appTheme == themeManager.currentTheme {
+                item.state = .on
+            }
+            themeMenu.addItem(item)
+        }
+        themeItem.submenu = themeMenu
+        menu.addItem(themeItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Toggles
+        let alwaysOnTopItem = NSMenuItem(title: "Always on Top", action: #selector(toggleAlwaysOnTop), keyEquivalent: "")
+        alwaysOnTopItem.target = self
+        alwaysOnTopItem.state = UserDefaults.standard.bool(forKey: "alwaysOnTop") ? .on : .off
+        menu.addItem(alwaysOnTopItem)
+
+        let menuBarTimerItem = NSMenuItem(title: "Timer in Menu Bar", action: #selector(toggleMenuBarTimer), keyEquivalent: "")
+        menuBarTimerItem.target = self
+        menuBarTimerItem.state = UserDefaults.standard.bool(forKey: "showTimerInMenuBar") ? .on : .off
+        menu.addItem(menuBarTimerItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Reset statistics
+        let resetItem = NSMenuItem(title: "Reset Statistics…", action: #selector(resetStatistics), keyEquivalent: "")
+        resetItem.target = self
+        menu.addItem(resetItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Quit
+        let quitItem = NSMenuItem(title: "Quit PCVL", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        // Clear the menu so left-click goes back to togglePanel
+        statusItem.menu = nil
+    }
+
+    // MARK: - Menu Actions
+
+    @objc private func setWorkDuration(_ sender: NSMenuItem) {
+        guard viewModel.isIdle else { return }
+        viewModel.workDuration = sender.tag * 60
+    }
+
+    @objc private func setBreakDuration(_ sender: NSMenuItem) {
+        guard viewModel.isIdle else { return }
+        viewModel.breakDuration = sender.tag * 60
+    }
+
+    @objc private func setTheme(_ sender: NSMenuItem) {
+        guard let theme = sender.representedObject as? AppTheme else { return }
+        themeManager.currentTheme = theme
+    }
+
+    @objc private func toggleAlwaysOnTop() {
+        let current = UserDefaults.standard.bool(forKey: "alwaysOnTop")
+        let newValue = !current
+        UserDefaults.standard.set(newValue, forKey: "alwaysOnTop")
+        setAlwaysOnTop(newValue)
+    }
+
+    @objc private func toggleMenuBarTimer() {
+        let current = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
+        UserDefaults.standard.set(!current, forKey: "showTimerInMenuBar")
+        viewModel.updateMenuBarIcon()
+    }
+
+    @objc private func resetStatistics() {
+        let alert = NSAlert()
+        alert.messageText = "Reset Statistics"
+        alert.informativeText = "Are you sure you want to delete all session records? This action cannot be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            statsManager.deleteAllSessions()
+        }
+    }
+
+    @objc private func quitApp() {
+        NSApp.terminate(nil)
+    }
+
+    // MARK: - Window Management
 
     private func positionWindowNearStatusItem() {
         guard let button = statusItem.button,
@@ -90,26 +234,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setAlwaysOnTop(_ enabled: Bool) {
         panelWindow.isFloatingPanel = enabled
-        panelWindow.level = enabled ? .floating : .normal
+        panelWindow.level = enabled ? .statusBar : .normal
     }
 
     func updateMenuBar(time: String, isRunning: Bool) {
         guard let button = statusItem.button else { return }
-        
+
         let showTimer = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
-        
-        // Icon always stays
+
         let icon = NSImage(named: "MenuBarIcon")
         icon?.size = NSSize(width: 18, height: 18)
         button.image = icon
-        
+
         if showTimer && isRunning {
-            // Show live timer to the left of icon
             button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
             button.title = "\(time) "
             button.imagePosition = .imageRight
         } else {
-            // Just the icon, no text
             button.title = ""
             button.imagePosition = .imageOnly
         }
