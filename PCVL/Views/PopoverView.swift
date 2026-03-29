@@ -48,15 +48,21 @@ struct PopoverView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(SwipeGestureView { direction in
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    switchTab(direction)
-                }
-            })
         }
         .frame(width: 280, height: 180)
         .background(themeManager.colors.background)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            SwipeMonitor.shared.onSwipe = { direction in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    switchTab(direction)
+                }
+            }
+            SwipeMonitor.shared.start()
+        }
+        .onDisappear {
+            SwipeMonitor.shared.stop()
+        }
     }
 
     // MARK: - Tab Bar
@@ -108,33 +114,43 @@ enum SwipeDirection {
     case left, right
 }
 
-struct SwipeGestureView: NSViewRepresentable {
-    var onSwipe: (SwipeDirection) -> Void
+/// Uses a local event monitor to detect horizontal swipes without blocking vertical scrolling.
+class SwipeMonitor {
+    static let shared = SwipeMonitor()
 
-    func makeNSView(context: Context) -> SwipeNSView {
-        let view = SwipeNSView()
-        view.onSwipe = onSwipe
-        return view
-    }
-
-    func updateNSView(_ nsView: SwipeNSView, context: Context) {
-        nsView.onSwipe = onSwipe
-    }
-}
-
-class SwipeNSView: NSView {
     var onSwipe: ((SwipeDirection) -> Void)?
+
+    private var monitor: Any?
     private var accumulatedDeltaX: CGFloat = 0
+    private var isHorizontalGesture: Bool = false
     private let threshold: CGFloat = 30
 
-    override var acceptsFirstResponder: Bool { true }
+    func start() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            self?.handleScroll(event)
+            // Always return the event so vertical scrolls reach the ScrollView
+            return event
+        }
+    }
 
-    override func scrollWheel(with event: NSEvent) {
+    func stop() {
+        if let monitor = monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        monitor = nil
+    }
+
+    private func handleScroll(_ event: NSEvent) {
+        // Only handle direct touch-phase events, not momentum
         guard event.momentumPhase == .init(rawValue: 0) else { return }
 
         if event.phase == .began {
             accumulatedDeltaX = 0
+            isHorizontalGesture = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
         }
+
+        guard isHorizontalGesture else { return }
 
         accumulatedDeltaX += event.scrollingDeltaX
 
