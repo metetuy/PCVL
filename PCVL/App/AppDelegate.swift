@@ -6,6 +6,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = TimerViewModel()
     private let themeManager = ThemeManager()
     private let statsManager = StatisticsManager()
+    
+    private var globalEventMonitor: Any?
+    private var localEventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
 
@@ -67,12 +70,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func togglePanel() {
         if panelWindow.isVisible {
-            panelWindow.orderOut(nil)
+            closePanel()
         } else {
             positionWindowNearStatusItem()
             panelWindow.orderFront(nil)
+            updateEventMonitors()
         }
         viewModel.updateMenuBarIcon()
+    }
+
+    private var shouldPreventAutoClose: Bool {
+        let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
+        let timerInMenuBar = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
+        return alwaysOnTop && !timerInMenuBar
+    }
+
+    private func updateEventMonitors() {
+        guard panelWindow.isVisible else {
+            stopEventMonitors()
+            return
+        }
+        
+        if shouldPreventAutoClose {
+            stopEventMonitors()
+        } else {
+            startEventMonitors()
+        }
+    }
+
+    private func startEventMonitors() {
+        if globalEventMonitor == nil {
+            globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                self?.handleOutsideClick()
+            }
+        }
+        if localEventMonitor == nil {
+            localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                if let self = self, event.window != self.panelWindow && event.window != self.statusItem.button?.window {
+                    self.handleOutsideClick()
+                }
+                return event
+            }
+        }
+    }
+
+    private func stopEventMonitors() {
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
+    }
+
+    private func handleOutsideClick() {
+        if !shouldPreventAutoClose {
+            closePanel()
+        }
+    }
+
+    private func closePanel() {
+        if panelWindow.isVisible {
+            panelWindow.orderOut(nil)
+            stopEventMonitors()
+            viewModel.updateMenuBarIcon()
+        }
     }
 
     // MARK: - Context Menu
@@ -187,6 +251,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let current = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
         UserDefaults.standard.set(!current, forKey: "showTimerInMenuBar")
         viewModel.updateMenuBarIcon()
+        updateEventMonitors()
     }
 
     @objc private func resetStatistics() {
@@ -235,6 +300,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func setAlwaysOnTop(_ enabled: Bool) {
         panelWindow.isFloatingPanel = enabled
         panelWindow.level = enabled ? .statusBar : .normal
+        updateEventMonitors()
     }
 
     func updateMenuBar(time: String, isRunning: Bool) {
