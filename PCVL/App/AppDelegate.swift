@@ -43,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         let alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         panelWindow.isFloatingPanel = alwaysOnTop
-        panelWindow.level = alwaysOnTop ? .statusBar : .normal
+        panelWindow.level = alwaysOnTop ? .statusBar : .floating
         panelWindow.isOpaque = false
         panelWindow.backgroundColor = .clear
         panelWindow.hasShadow = true
@@ -73,6 +73,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             closePanel()
         } else {
             positionWindowNearStatusItem()
+            // Bring the app to foreground first so the panel is presented above active app windows.
+            NSApp.activate(ignoringOtherApps: true)
             panelWindow.orderFront(nil)
             updateEventMonitors()
         }
@@ -299,7 +301,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func setAlwaysOnTop(_ enabled: Bool) {
         panelWindow.isFloatingPanel = enabled
-        panelWindow.level = enabled ? .statusBar : .normal
+        panelWindow.level = enabled ? .statusBar : .floating
         updateEventMonitors()
     }
 
