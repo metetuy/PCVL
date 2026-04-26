@@ -9,6 +9,7 @@ struct TimerView: View {
     var onToggleFullscreen: () -> Void
 
     @State private var scrollAccumulator: CGFloat = 0
+    @State private var lastHapticFeedbackTime: CFTimeInterval = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,7 +48,6 @@ struct TimerView: View {
 
                 // Timer display — clickable
                 timerDisplay
-                    .opacity(viewModel.editableCountdownDuration == nil ? 0.58 : 1)
                     .overlay {
                         TimerScrollWheelMonitor(
                             isEnabled: viewModel.editableCountdownDuration != nil,
@@ -184,7 +184,17 @@ struct TimerView: View {
             let direction = scrollAccumulator > 0 ? 1 : -1
             scrollAccumulator -= CGFloat(direction) * TimerScrollWheelMonitor.scrollThreshold
             viewModel.adjustDuration(editableDuration, byMinutes: direction * editableDuration.stepMinutes)
+
+            performHapticFeedbackIfNeeded()
         }
+    }
+
+    private func performHapticFeedbackIfNeeded() {
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastHapticFeedbackTime >= 0.08 else { return }
+
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        lastHapticFeedbackTime = now
     }
 }
 
