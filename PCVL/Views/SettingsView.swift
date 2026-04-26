@@ -47,14 +47,12 @@ struct SettingsView: View {
                 durationRow(
                     label: "Work",
                     icon: "brain.head.profile",
-                    minutes: viewModel.workDuration / 60,
+                    minutes: viewModel.durationMinutes(for: .work),
                     onDecrement: {
-                        let newVal = max(5, viewModel.workDuration / 60 - 5) * 60
-                        viewModel.workDuration = newVal
+                        viewModel.adjustDuration(.work, byMinutes: -TimerViewModel.AdjustableDuration.work.stepMinutes)
                     },
                     onIncrement: {
-                        let newVal = min(480, viewModel.workDuration / 60 + 5) * 60
-                        viewModel.workDuration = newVal
+                        viewModel.adjustDuration(.work, byMinutes: TimerViewModel.AdjustableDuration.work.stepMinutes)
                     }
                 )
 
@@ -63,14 +61,12 @@ struct SettingsView: View {
                 durationRow(
                     label: "Break",
                     icon: "cup.and.saucer",
-                    minutes: viewModel.breakDuration / 60,
+                    minutes: viewModel.durationMinutes(for: .breakTime),
                     onDecrement: {
-                        let newVal = max(1, viewModel.breakDuration / 60 - 1) * 60
-                        viewModel.breakDuration = newVal
+                        viewModel.adjustDuration(.breakTime, byMinutes: -TimerViewModel.AdjustableDuration.breakTime.stepMinutes)
                     },
                     onIncrement: {
-                        let newVal = min(30, viewModel.breakDuration / 60 + 1) * 60
-                        viewModel.breakDuration = newVal
+                        viewModel.adjustDuration(.breakTime, byMinutes: TimerViewModel.AdjustableDuration.breakTime.stepMinutes)
                     }
                 )
             }

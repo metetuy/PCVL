@@ -14,10 +14,34 @@ class TimerViewModel: ObservableObject {
     private var statisticsManager: StatisticsManager?
     var menuBarUpdater: ((String, Bool) -> Void)?
 
+    enum AdjustableDuration {
+        case work
+        case breakTime
+
+        var stepMinutes: Int {
+            switch self {
+            case .work:
+                return 5
+            case .breakTime:
+                return 1
+            }
+        }
+
+        var bounds: ClosedRange<Int> {
+            switch self {
+            case .work:
+                return 5...480
+            case .breakTime:
+                return 1...30
+            }
+        }
+    }
+
     // Persisted durations (in seconds)
     var workDuration: Int {
-        get { UserDefaults.standard.integer(forKey: "workDuration").clamped(to: 300...28800, default: 1500) }
+        get { UserDefaults.standard.integer(forKey: "workDuration").clamped(to: AdjustableDuration.work.bounds.inSeconds, default: 1500) }
         set {
+            guard engine.state == .idle else { return }
             UserDefaults.standard.set(newValue, forKey: "workDuration")
             if engine.state == .idle && engine.mode == .countDown && !isBreak {
                 engine.setTarget(seconds: newValue)
@@ -27,8 +51,9 @@ class TimerViewModel: ObservableObject {
     }
 
     var breakDuration: Int {
-        get { UserDefaults.standard.integer(forKey: "breakDuration").clamped(to: 60...1800, default: 300) }
+        get { UserDefaults.standard.integer(forKey: "breakDuration").clamped(to: AdjustableDuration.breakTime.bounds.inSeconds, default: 300) }
         set {
+            guard engine.state == .idle else { return }
             UserDefaults.standard.set(newValue, forKey: "breakDuration")
             if engine.state == .idle && engine.mode == .countDown && isBreak {
                 engine.setTarget(seconds: newValue)
@@ -63,6 +88,11 @@ class TimerViewModel: ObservableObject {
         case .countUp:
             return "STOPWATCH"
         }
+    }
+
+    var editableCountdownDuration: AdjustableDuration? {
+        guard engine.state == .idle, engine.mode == .countDown else { return nil }
+        return isBreak ? .breakTime : .work
     }
 
     // MARK: - Setup
@@ -195,6 +225,35 @@ class TimerViewModel: ObservableObject {
     func updateMenuBarIcon() {
         menuBarUpdater?(engine.shortFormattedTime, isRunning)
     }
+
+    func durationMinutes(for duration: AdjustableDuration) -> Int {
+        switch duration {
+        case .work:
+            return workDuration / 60
+        case .breakTime:
+            return breakDuration / 60
+        }
+    }
+
+    func adjustDuration(_ duration: AdjustableDuration, byMinutes deltaMinutes: Int) {
+        let updatedMinutes = clamp(durationMinutes(for: duration) + deltaMinutes, for: duration)
+        setDuration(duration, minutes: updatedMinutes)
+    }
+
+    func setDuration(_ duration: AdjustableDuration, minutes: Int) {
+        let clampedMinutes = clamp(minutes, for: duration)
+
+        switch duration {
+        case .work:
+            workDuration = clampedMinutes * 60
+        case .breakTime:
+            breakDuration = clampedMinutes * 60
+        }
+    }
+
+    private func clamp(_ minutes: Int, for duration: AdjustableDuration) -> Int {
+        Swift.min(Swift.max(minutes, duration.bounds.lowerBound), duration.bounds.upperBound)
+    }
 }
 
 // MARK: - Int Extension
@@ -203,5 +262,11 @@ private extension Int {
     func clamped(to range: ClosedRange<Int>, default defaultValue: Int) -> Int {
         if self == 0 { return defaultValue }
         return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+private extension ClosedRange where Bound == Int {
+    var inSeconds: ClosedRange<Int> {
+        (lowerBound * 60)...(upperBound * 60)
     }
 }

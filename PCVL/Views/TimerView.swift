@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Timer View
 
@@ -6,6 +7,8 @@ struct TimerView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
     var onToggleFullscreen: () -> Void
+
+    @State private var scrollAccumulator: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,6 +47,14 @@ struct TimerView: View {
 
                 // Timer display — clickable
                 timerDisplay
+                    .opacity(viewModel.editableCountdownDuration == nil ? 0.58 : 1)
+                    .overlay {
+                        TimerScrollWheelMonitor(
+                            isEnabled: viewModel.editableCountdownDuration != nil,
+                            onScroll: handleScrollWheel
+                        )
+                        .allowsHitTesting(false)
+                    }
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             if viewModel.isCompleted {
@@ -156,5 +167,92 @@ struct TimerView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+        .onChange(of: viewModel.editableCountdownDuration) { _, _ in
+            scrollAccumulator = 0
+        }
+    }
+
+    private func handleScrollWheel(_ deltaY: CGFloat) {
+        guard let editableDuration = viewModel.editableCountdownDuration else {
+            scrollAccumulator = 0
+            return
+        }
+
+        scrollAccumulator += deltaY
+
+        while abs(scrollAccumulator) >= TimerScrollWheelMonitor.scrollThreshold {
+            let direction = scrollAccumulator > 0 ? 1 : -1
+            scrollAccumulator -= CGFloat(direction) * TimerScrollWheelMonitor.scrollThreshold
+            viewModel.adjustDuration(editableDuration, byMinutes: direction * editableDuration.stepMinutes)
+        }
+    }
+}
+
+// MARK: - Scroll Wheel Monitor
+
+private struct TimerScrollWheelMonitor: NSViewRepresentable {
+    static let scrollThreshold: CGFloat = 30
+
+    var isEnabled: Bool
+    var onScroll: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        context.coordinator.installMonitor()
+        context.coordinator.view = view
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.isEnabled = isEnabled
+        context.coordinator.onScroll = onScroll
+        context.coordinator.view = nsView
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    final class Coordinator {
+        var isEnabled = false
+        var onScroll: (CGFloat) -> Void = { _ in }
+
+        weak var view: NSView?
+        private var monitor: Any?
+
+        func installMonitor() {
+            guard monitor == nil else { return }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        func stop() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            monitor = nil
+            view = nil
+        }
+
+        deinit {
+            stop()
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard isEnabled, event.momentumPhase.isEmpty else { return }
+            guard let view, view.window != nil else { return }
+
+            let point = view.convert(event.locationInWindow, from: nil)
+            guard view.bounds.contains(point) else { return }
+
+            onScroll(-event.scrollingDeltaY)
+        }
     }
 }
