@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreText
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -11,6 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var localEventMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Register custom fonts
+        registerFonts()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
@@ -194,6 +197,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Font picker
+        let fontItem = NSMenuItem(title: "Font", action: nil, keyEquivalent: "")
+        let fontMenu = NSMenu()
+        for appFont in AppFont.allCases {
+            let item = NSMenuItem(title: appFont.rawValue, action: #selector(setFont(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = appFont
+            if appFont == themeManager.currentFont {
+                item.state = .on
+            }
+            fontMenu.addItem(item)
+        }
+        fontItem.submenu = fontMenu
+        menu.addItem(fontItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // Toggles
         let alwaysOnTopItem = NSMenuItem(title: "Always on Top", action: #selector(toggleAlwaysOnTop), keyEquivalent: "")
         alwaysOnTopItem.target = self
@@ -242,6 +262,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         themeManager.currentTheme = theme
     }
 
+    @objc private func setFont(_ sender: NSMenuItem) {
+        guard let font = sender.representedObject as? AppFont else { return }
+        themeManager.currentFont = font
+    }
+
     @objc private func toggleAlwaysOnTop() {
         let current = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         let newValue = !current
@@ -273,6 +298,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Window Management
+
+    // MARK: - Font Registration
+    
+    private func registerFonts() {
+        let fontFileNames = ["Inter-VariableFont_opsz,wght.ttf"]
+        
+        for fontFileName in fontFileNames {
+            guard let fontURL = Bundle.main.url(forResource: fontFileName, withExtension: nil) else {
+                NSLog("Font file not found: \(fontFileName)")
+                continue
+            }
+            
+            var error: Unmanaged<CFError>?
+            if !CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, &error) {
+                NSLog("Failed to register font: \(fontFileName)")
+            }
+        }
+    }
 
     private func positionWindowNearStatusItem() {
         guard let button = statusItem.button,

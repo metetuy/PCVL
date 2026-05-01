@@ -26,16 +26,100 @@ struct ThemeColors {
     let ringTrack: Color
 }
 
+// MARK: - App Font
+
+enum AppFont: String, CaseIterable, Identifiable {
+    case system = "System"
+    case inter = "Inter"
+    
+    var id: String { rawValue }
+    
+    func font(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default, weightBoost: Int = 1) -> Font {
+        switch self {
+        case .system:
+            return .system(size: size, weight: weight, design: design)
+        case .inter:
+            // Boost weight for Inter to compensate for lighter rendering
+            let adjustedWeight = self.boostedWeight(weight, boost: weightBoost)
+            return .custom("Inter", size: size).weight(adjustedWeight)
+        }
+    }
+    
+    func boostedWeight(_ weight: Font.Weight, boost: Int) -> Font.Weight {
+        let weights: [Font.Weight] = [.thin, .light, .regular, .medium, .semibold, .bold, .heavy, .black]
+        
+        // Find current weight index
+        let currentIndex: Int
+        switch weight {
+        case .thin: currentIndex = 0
+        case .light: currentIndex = 1
+        case .regular: currentIndex = 2
+        case .medium: currentIndex = 3
+        case .semibold: currentIndex = 4
+        case .bold: currentIndex = 5
+        case .heavy: currentIndex = 6
+        case .black: currentIndex = 7
+        default: currentIndex = 2
+        }
+        
+        // Apply boost and clamp to valid range
+        let newIndex = min(7, currentIndex + boost)
+        return weights[newIndex]
+    }
+}
+
 // MARK: - Theme Manager
 
 class ThemeManager: ObservableObject {
-    @AppStorage("selectedTheme") var selectedThemeName: String = AppTheme.minimalist.rawValue
+    @AppStorage("selectedTheme") var selectedThemeName: String = AppTheme.minimalist.rawValue {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("selectedFont") var selectedFontName: String = AppFont.system.rawValue {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("interFontWeightBoost") var interFontWeightBoost: Int = 1 {
+        didSet { objectWillChange.send() }
+    }
 
     var currentTheme: AppTheme {
         get { AppTheme(rawValue: selectedThemeName) ?? .minimalist }
         set {
             selectedThemeName = newValue.rawValue
             objectWillChange.send()
+        }
+    }
+    
+    var currentFont: AppFont {
+        get { AppFont(rawValue: selectedFontName) ?? .system }
+        set {
+            selectedFontName = newValue.rawValue
+            objectWillChange.send()
+        }
+    }
+    
+    // Helper method to get font with automatic weight boost applied
+    func getFont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        return currentFont.font(size: size, weight: weight, design: design, weightBoost: interFontWeightBoost)
+    }
+
+    // Font specifically for the timer display — applies weight boost
+    func timerFont(size: CGFloat, weight: Font.Weight = .thin) -> Font {
+        switch currentFont {
+        case .system:
+            return .system(size: size, weight: weight)
+        case .inter:
+            let adjustedWeight = currentFont.boostedWeight(weight, boost: interFontWeightBoost)
+            return .custom("Inter", size: size).weight(adjustedWeight)
+        }
+    }
+    
+    func fontWeightLabel(_ boost: Int) -> String {
+        switch boost {
+        case 0: return "Light"
+        case 1: return "Medium"
+        case 2: return "Semibold"
+        case 3: return "Bold"
+        default: return "Custom"
         }
     }
 

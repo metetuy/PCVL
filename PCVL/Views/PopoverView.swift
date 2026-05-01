@@ -84,7 +84,7 @@ struct PopoverView: View {
             }
         } label: {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(themeManager.currentFont.font(size: 12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .foregroundColor(

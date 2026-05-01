@@ -18,7 +18,7 @@ struct TimerView: View {
                 modeToggle
                 Spacer()
                 Text(viewModel.modeLabel)
-                    .font(.system(size: 8, weight: .semibold))
+                    .font(theme.currentFont.font(size: 8, weight: .semibold))
                     .tracking(1.5)
                     .foregroundColor(theme.colors.textSecondary)
             }
@@ -36,7 +36,7 @@ struct TimerView: View {
                     }
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(theme.currentFont.font(size: 11, weight: .medium))
                         .foregroundColor(theme.colors.textSecondary)
                         .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
@@ -76,7 +76,7 @@ struct TimerView: View {
                     onToggleFullscreen()
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(theme.currentFont.font(size: 9, weight: .medium))
                         .foregroundColor(theme.colors.textSecondary)
                         .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
@@ -101,7 +101,7 @@ struct TimerView: View {
                     }
                 } label: {
                     Text(mode == .countDown ? "Timer" : "Stopwatch")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(theme.currentFont.font(size: 9, weight: .medium))
                         .foregroundColor(viewModel.mode == mode ? theme.colors.accent : theme.colors.textSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -128,7 +128,7 @@ struct TimerView: View {
         VStack(spacing: 6) {
             // Time text
             Text(viewModel.engine.formattedTime)
-                .font(.system(size: 32, weight: .thin, design: .monospaced))
+                .font(theme.timerFont(size: 36, weight: .thin))
                 .foregroundColor(theme.colors.text)
                 .contentTransition(.numericText())
 
@@ -154,15 +154,15 @@ struct TimerView: View {
             // Tap hint
             if viewModel.isIdle {
                 Text("tap to start")
-                    .font(.system(size: 7))
+                    .font(theme.currentFont.font(size: 7))
                     .foregroundColor(theme.colors.textSecondary.opacity(0.5))
             } else if viewModel.isPaused {
                 Text("tap to resume")
-                    .font(.system(size: 7))
+                    .font(theme.currentFont.font(size: 7))
                     .foregroundColor(theme.colors.textSecondary.opacity(0.5))
             } else {
                 Text(" ")
-                    .font(.system(size: 7))
+                    .font(theme.currentFont.font(size: 7))
             }
         }
         .frame(maxWidth: .infinity)

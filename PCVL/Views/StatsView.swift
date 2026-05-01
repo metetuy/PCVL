@@ -51,13 +51,13 @@ struct StatsView: View {
     private func statCard(value: String, label: String, icon: String) -> some View {
         VStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(theme.currentFont.font(size: 12))
                 .foregroundColor(theme.colors.accent)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(theme.currentFont.font(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(theme.colors.text)
             Text(label)
-                .font(.system(size: 9, weight: .medium))
+                .font(theme.currentFont.font(size: 9, weight: .medium))
                 .foregroundColor(theme.colors.textSecondary)
                 .tracking(0.5)
         }
@@ -75,7 +75,7 @@ struct StatsView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("THIS WEEK")
-                .font(.system(size: 9, weight: .semibold))
+                .font(theme.currentFont.font(size: 9, weight: .semibold))
                 .tracking(1.5)
                 .foregroundColor(theme.colors.textSecondary)
 
@@ -98,7 +98,7 @@ struct StatsView: View {
 
                         // Day label
                         Text(entry.day)
-                            .font(.system(size: 8, weight: entry.isToday ? .bold : .regular))
+                            .font(theme.currentFont.font(size: 8, weight: entry.isToday ? .bold : .regular))
                             .foregroundColor(
                                 entry.isToday
                                     ? theme.colors.text
@@ -124,13 +124,13 @@ struct StatsView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             Text("RECENT")
-                .font(.system(size: 9, weight: .semibold))
+                .font(theme.currentFont.font(size: 9, weight: .semibold))
                 .tracking(1.5)
                 .foregroundColor(theme.colors.textSecondary)
 
             if sessions.isEmpty {
                 Text("No sessions yet")
-                    .font(.system(size: 12))
+                    .font(theme.currentFont.font(size: 12))
                     .foregroundColor(theme.colors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
@@ -161,19 +161,19 @@ struct StatsView: View {
 
             // Date
             Text(formattedDate(session.date))
-                .font(.system(size: 11))
+                .font(theme.currentFont.font(size: 11))
                 .foregroundColor(theme.colors.text)
 
             Spacer()
 
             // Duration
             Text(session.durationFormatted)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(theme.currentFont.font(size: 11, weight: .medium, design: .monospaced))
                 .foregroundColor(theme.colors.textSecondary)
 
             // Type label
             Text(typeLabel(session.sessionType))
-                .font(.system(size: 9, weight: .medium))
+                .font(theme.currentFont.font(size: 9, weight: .medium))
                 .foregroundColor(badgeColor(for: session.sessionType))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)

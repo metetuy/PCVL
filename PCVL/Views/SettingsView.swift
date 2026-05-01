@@ -18,8 +18,9 @@ struct SettingsView: View {
                 timerSection
                     .padding(.top, 14)
 
-                // Theme picker
+                // Theme & Display settings
                 themeSection
+                displaySection
 
                 // Window behavior
                 behaviorSection
@@ -84,12 +85,12 @@ struct SettingsView: View {
     ) -> some View {
         HStack {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(theme.currentFont.font(size: 12))
                 .foregroundColor(theme.colors.accent)
                 .frame(width: 20)
 
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(theme.currentFont.font(size: 12, weight: .medium))
                 .foregroundColor(theme.colors.text)
 
             Spacer()
@@ -99,7 +100,7 @@ struct SettingsView: View {
                     onDecrement()
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(theme.currentFont.font(size: 10, weight: .bold))
                         .foregroundColor(theme.colors.textSecondary)
                         .frame(width: 22, height: 22)
                         .background(theme.colors.background)
@@ -109,7 +110,7 @@ struct SettingsView: View {
                 .disabled(!viewModel.isIdle)
 
                 Text("\(minutes) min")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .font(theme.currentFont.font(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundColor(theme.colors.text)
                     .frame(width: 50)
 
@@ -117,7 +118,7 @@ struct SettingsView: View {
                     onIncrement()
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(theme.currentFont.font(size: 10, weight: .bold))
                         .foregroundColor(theme.colors.textSecondary)
                         .frame(width: 22, height: 22)
                         .background(theme.colors.background)
@@ -132,8 +133,103 @@ struct SettingsView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - Theme Section
 
+
+    // MARK: - Display Section
+
+    private var displaySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("DISPLAY")
+
+            VStack(spacing: 0) {
+                // Font Picker
+            VStack(spacing: 6) {
+                    Text("Timer Font")
+                        .font(theme.currentFont.font(size: 9, weight: .semibold))
+                        .tracking(1.5)
+                        .foregroundColor(theme.colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                        .padding(.bottom, 2)
+
+                    ForEach(AppFont.allCases) { appFont in
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                theme.currentFont = appFont
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(appFont.rawValue)
+                                    .font(appFont.font(size: 12, weight: .medium))
+                                    .foregroundColor(
+                                        theme.currentFont == appFont
+                                            ? theme.colors.text
+                                            : theme.colors.textSecondary
+                                    )
+
+                                Spacer()
+
+                                if theme.currentFont == appFont {
+                                    Image(systemName: "checkmark")
+                                        .font(theme.currentFont.font(size: 10, weight: .bold))
+                                        .foregroundColor(theme.colors.accent)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                            .background(
+                                theme.currentFont == appFont
+                                    ? theme.colors.accent.opacity(0.08)
+                                    : Color.clear
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.bottom, 8)
+
+                if theme.currentFont != .system {
+                    Divider().background(theme.colors.ringTrack)
+
+                    // Font Weight (Inter only)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "textformat.size")
+                                .font(theme.currentFont.font(size: 12))
+                                .foregroundColor(theme.colors.accent)
+                                .frame(width: 20)
+
+                            Text("Font Weight")
+                                .font(theme.currentFont.font(size: 12, weight: .medium))
+                                .foregroundColor(theme.colors.text)
+
+                            Spacer()
+
+                            Text(theme.fontWeightLabel(theme.interFontWeightBoost))
+                                .font(theme.currentFont.font(size: 11, weight: .medium))
+                                .foregroundColor(theme.colors.accent)
+                        }
+
+                        Slider(value: Binding(
+                            get: { Double(theme.interFontWeightBoost) },
+                            set: { newValue in
+                                theme.interFontWeightBoost = Int(newValue)
+                            }
+                        ), in: 0...3, step: 1)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+            }
+            .background(theme.colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    // MARK: - Theme Section
     private var themeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader("THEME")
@@ -151,7 +247,7 @@ struct SettingsView: View {
                                 .frame(width: 10, height: 10)
 
                             Text(appTheme.rawValue)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(theme.currentFont.font(size: 12, weight: .medium))
                                 .foregroundColor(
                                     theme.currentTheme == appTheme
                                         ? theme.colors.text
@@ -162,12 +258,13 @@ struct SettingsView: View {
 
                             if theme.currentTheme == appTheme {
                                 Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(theme.currentFont.font(size: 10, weight: .bold))
                                     .foregroundColor(theme.colors.accent)
                             }
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                         .background(
                             theme.currentTheme == appTheme
                                 ? theme.colors.accent.opacity(0.08)
@@ -184,6 +281,8 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Display Section
+
     // MARK: - Behavior Section
 
     private var behaviorSection: some View {
@@ -193,12 +292,12 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 HStack {
                     Image(systemName: "pin")
-                        .font(.system(size: 12))
+                        .font(theme.currentFont.font(size: 12))
                         .foregroundColor(theme.colors.accent)
                         .frame(width: 20)
 
                     Text("Always on Top")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.currentFont.font(size: 12, weight: .medium))
                         .foregroundColor(theme.colors.text)
 
                     Spacer()
@@ -219,12 +318,12 @@ struct SettingsView: View {
 
                 HStack {
                     Image(systemName: "menubar.rectangle")
-                        .font(.system(size: 12))
+                        .font(theme.currentFont.font(size: 12))
                         .foregroundColor(theme.colors.accent)
                         .frame(width: 20)
 
                     Text("Timer in Menu Bar")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(theme.currentFont.font(size: 12, weight: .medium))
                         .foregroundColor(theme.colors.text)
 
                     Spacer()
@@ -253,9 +352,9 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "trash")
-                    .font(.system(size: 11))
+                    .font(theme.currentFont.font(size: 11))
                 Text("Reset Statistics")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.currentFont.font(size: 12, weight: .medium))
             }
             .foregroundColor(Color(nsColor: NSColor(red: 0.85, green: 0.4, blue: 0.2, alpha: 1)))
             .frame(maxWidth: .infinity)
@@ -282,9 +381,9 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "power")
-                    .font(.system(size: 11))
+                    .font(theme.currentFont.font(size: 11))
                 Text("Quit PCVL")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(theme.currentFont.font(size: 12, weight: .medium))
             }
             .foregroundColor(Color(nsColor: NSColor(red: 0.85, green: 0.3, blue: 0.3, alpha: 1)))
             .frame(maxWidth: .infinity)
@@ -299,7 +398,7 @@ struct SettingsView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 9, weight: .semibold))
+            .font(theme.currentFont.font(size: 9, weight: .semibold))
             .tracking(1.5)
             .foregroundColor(theme.colors.textSecondary)
     }
