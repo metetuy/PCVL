@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("alwaysOnTop") private var alwaysOnTop: Bool = false
     @AppStorage("showTimerInMenuBar") private var showTimerInMenuBar: Bool = false
     @State private var showingResetAlert = false
+    @State private var showingThemeList = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -19,7 +20,11 @@ struct SettingsView: View {
                     .padding(.top, 14)
 
                 // Theme & Display settings
-                themeSection
+                if showingThemeList {
+                    compactThemeList
+                } else {
+                    themeMenuButton
+                }
                 displaySection
 
                 // Window behavior
@@ -230,27 +235,80 @@ struct SettingsView: View {
     }
 
     // MARK: - Theme Section
-    private var themeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("THEME")
+    
+    private var themeMenuButton: some View {
+        Button {
+            showingThemeList = true
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(previewColor(for: theme.currentTheme))
+                    .frame(width: 8, height: 8)
 
-            VStack(spacing: 6) {
+                Text(theme.currentTheme.rawValue)
+                    .font(theme.currentFont.font(size: 12, weight: .medium))
+                    .foregroundColor(theme.colors.text)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(theme.currentFont.font(size: 9, weight: .semibold))
+                    .foregroundColor(theme.colors.textSecondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(theme.colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var compactThemeList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                showingThemeList = false
+            } label: {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(previewColor(for: theme.currentTheme))
+                        .frame(width: 8, height: 8)
+
+                    Text(theme.currentTheme.rawValue)
+                        .font(theme.currentFont.font(size: 12, weight: .medium))
+                        .foregroundColor(theme.colors.text)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.down")
+                        .font(theme.currentFont.font(size: 9, weight: .semibold))
+                        .foregroundColor(theme.colors.textSecondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(theme.colors.surface)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            VStack(spacing: 4) {
                 ForEach(AppTheme.allCases) { appTheme in
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             theme.currentTheme = appTheme
+                            showingThemeList = false
                         }
                     } label: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             Circle()
                                 .fill(previewColor(for: appTheme))
-                                .frame(width: 10, height: 10)
+                                .frame(width: 8, height: 8)
 
                             Text(appTheme.rawValue)
-                                .font(theme.currentFont.font(size: 12, weight: .medium))
+                                .font(theme.currentFont.font(size: 12))
                                 .foregroundColor(
                                     theme.currentTheme == appTheme
-                                        ? theme.colors.text
+                                        ? theme.colors.accent
                                         : theme.colors.textSecondary
                                 )
 
@@ -258,26 +316,20 @@ struct SettingsView: View {
 
                             if theme.currentTheme == appTheme {
                                 Image(systemName: "checkmark")
-                                    .font(theme.currentFont.font(size: 10, weight: .bold))
+                                    .font(theme.currentFont.font(size: 9, weight: .bold))
                                     .foregroundColor(theme.colors.accent)
                             }
                         }
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                         .contentShape(Rectangle())
-                        .background(
-                            theme.currentTheme == appTheme
-                                ? theme.colors.accent.opacity(0.08)
-                                : Color.clear
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(6)
+            .padding(.vertical, 4)
             .background(theme.colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
     }
 
@@ -410,6 +462,20 @@ struct SettingsView: View {
         case .light: return Color(nsColor: NSColor(red: 0.3, green: 0.3, blue: 0.65, alpha: 1))
         case .ocean: return Color(nsColor: NSColor(red: 0.25, green: 0.7, blue: 0.85, alpha: 1))
         case .bloom: return Color(nsColor: NSColor(red: 0.95, green: 0.4, blue: 0.55, alpha: 1))
+        
+        case .roseDark: return Color(hex: "#dd2d4a")
+        case .roseLight: return Color(hex: "#fb6f92")
+        case .pinkSoft: return Color(hex: "#ff8fab")
+        case .navyBlue: return Color(hex: "#415a77")
+        case .slateBlue: return Color(hex: "#3e5c76")
+        case .teaGreen: return Color(hex: "#1b4965")
+        case .slateDark: return Color(hex: "#596d83")
+        case .warmEarth: return Color(hex: "#5ca4a9")
+        case .navyGold: return Color(hex: "#faf0ca")
+        case .lightBlue: return Color(hex: "#274c77")
+        case .charcoalLight: return Color(hex: "#eff1f3")
+        case .creamTeal: return Color(hex: "#0d5c63")
+        case .redNavy: return Color(hex: "#d7263d")
         }
     }
 }
