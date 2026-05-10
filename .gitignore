@@ -62,3 +62,15 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 CLAUDE.md
+Backend/.env
+.env
+Backend/pycache/
+Backend/__pycache__/
+Backend/*.pyc
+
+pycache/
+__pycache__/
+*.pyc
+.venv
+/.venv
+.venv/
