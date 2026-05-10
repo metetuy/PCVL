@@ -13,10 +13,7 @@ class SessionRecord(Base):
 
     type = Column(String, nullable= False)
 
-    # Will be used for past records
-    date = Column(DateTime(timezone=True), nullable= True)
-
-
-    #Automatically created by server, won't rely on the client's date
+    # Automatically created by server, won't rely on the client's date
+    # Old records will be migrated.
     created_at = Column(DateTime(timezone=True), nullable= False, server_default= func.now())
 
