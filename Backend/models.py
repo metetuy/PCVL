@@ -9,8 +9,8 @@ class SessionRecord(Base):
 
     id = Column(Integer, primary_key=True, index = True)
 
+    # These two comes from the client app
     duration = Column(Integer, nullable=False)
-
     type = Column(String, nullable= False)
 
     # Automatically created by server, won't rely on the client's date
