@@ -42,3 +42,10 @@ def get_sessions(
     )
 
     return sessions
+
+# DELETE /sessions - delete all session records
+@router.delete("/")
+def delete_all_sessions(db: Session = Depends(get_db)):
+    db.query(SessionRecord).delete()
+    db.commit()
+    return {"deleted": True}
