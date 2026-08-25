@@ -1,5 +1,28 @@
 import SwiftUI
 
+// MARK: - Visual Effect Background
+
+/// Wraps NSVisualEffectView to give the panel native macOS vibrancy/blur.
+struct VisualEffectBackground: NSViewRepresentable {
+    var material: NSVisualEffectView.Material = .hudWindow
+    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
+    var state: NSVisualEffectView.State = .active
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = blendingMode
+        view.state = state
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.material = material
+        nsView.blendingMode = blendingMode
+        nsView.state = state
+    }
+}
+
 // MARK: - Tab Enum
 
 enum AppTab: CaseIterable {
@@ -15,6 +38,7 @@ struct PopoverView: View {
     @ObservedObject var themeManager: ThemeManager
     @ObservedObject var statsManager: StatisticsManager
     var onToggleFullscreen: () -> Void
+    var onShowThemePicker: (CGRect) -> Void
 
     @State private var selectedTab: AppTab = .timer
     @State private var swipeDelta: CGFloat = 0
@@ -43,15 +67,18 @@ struct PopoverView: View {
                     SettingsView(
                         viewModel: viewModel,
                         theme: themeManager,
-                        statsManager: statsManager
+                        statsManager: statsManager,
+                        onShowThemePicker: onShowThemePicker
                     )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 280, height: 180)
-        .background(themeManager.colors.background)
+        .coordinateSpace(name: "panel")
+        .frame(width: 300, height: 190)
+        .background(panelGradient)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeManager.colors.text.opacity(0.08), lineWidth: 0.5))
         .onAppear {
             SwipeMonitor.shared.onSwipe = { direction in
                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -63,6 +90,22 @@ struct PopoverView: View {
         .onDisappear {
             SwipeMonitor.shared.stop()
         }
+    }
+
+    // MARK: - Panel Background
+
+    /// Static per-theme radial gradient — replaces the desktop-dependent blur so the
+    /// panel always renders the same vignette look regardless of what's behind it.
+    private var panelGradient: some View {
+        RadialGradient(
+            colors: [
+                themeManager.colors.background.lightened(by: 0.06),
+                themeManager.colors.background.darkened(by: 0.18)
+            ],
+            center: UnitPoint(x: 0.5, y: 0.35),
+            startRadius: 4,
+            endRadius: 220
+        )
     }
 
     // MARK: - Tab Bar
@@ -94,6 +137,7 @@ struct PopoverView: View {
                 )
         }
         .buttonStyle(.plain)
+        .hoverEffect()
     }
 
     private func switchTab(_ direction: SwipeDirection) {

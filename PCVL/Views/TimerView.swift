@@ -10,6 +10,7 @@ struct TimerView: View {
 
     @State private var scrollAccumulator: CGFloat = 0
     @State private var lastHapticFeedbackTime: CFTimeInterval = 0
+    @State private var isPrimaryButtonHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,9 +43,10 @@ struct TimerView: View {
                         .background(theme.colors.surface)
                         .clipShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
                 .disabled(viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 0.3 : 1)
+                .hoverEffect()
 
                 // Timer display — clickable
                 timerDisplay
@@ -82,7 +84,8 @@ struct TimerView: View {
                         .background(theme.colors.surface)
                         .clipShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
+                .hoverEffect()
             }
             .padding(.horizontal, 16)
 
@@ -115,6 +118,7 @@ struct TimerView: View {
                 .buttonStyle(.plain)
                 .disabled(!viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 1 : (viewModel.mode == mode ? 1 : 0.4))
+                .hoverEffect()
             }
         }
         .padding(2)
@@ -151,24 +155,82 @@ struct TimerView: View {
             }
             .frame(height: 3)
 
-            // Tap hint
-            if viewModel.isIdle {
-                Text("tap to start")
-                    .font(theme.currentFont.font(size: 7))
-                    .foregroundColor(theme.colors.textSecondary.opacity(0.5))
-            } else if viewModel.isPaused {
-                Text("tap to resume")
-                    .font(theme.currentFont.font(size: 7))
-                    .foregroundColor(theme.colors.textSecondary.opacity(0.5))
-            } else {
-                Text(" ")
-                    .font(theme.currentFont.font(size: 7))
-            }
+            primaryButton
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onChange(of: viewModel.editableCountdownDuration) { _, _ in
             scrollAccumulator = 0
+        }
+    }
+
+    // MARK: - Primary Button
+
+    private var primaryButtonLabel: String {
+        if viewModel.isCompleted {
+            return "Skip"
+        } else if viewModel.isRunning {
+            return "Pause"
+        } else if viewModel.isPaused {
+            return "Resume"
+        } else {
+            return "Start"
+        }
+    }
+
+    private func primaryButtonTapped() {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            if viewModel.isCompleted {
+                if viewModel.isBreak {
+                    viewModel.skipToWork()
+                } else {
+                    viewModel.skipToBreak()
+                }
+            } else if viewModel.isRunning {
+                viewModel.pause()
+            } else {
+                viewModel.start()
+            }
+        }
+    }
+
+    private var primaryButton: some View {
+        Button(action: primaryButtonTapped) {
+            Text(primaryButtonLabel)
+                .font(theme.currentFont.font(size: 11.5, weight: .semibold))
+                .foregroundColor(viewModel.isRunning ? theme.colors.text : theme.colors.background)
+                .frame(minWidth: 78, minHeight: 25)
+                .padding(.horizontal, 15)
+                .background(viewModel.isRunning ? theme.colors.text.opacity(0.12) : theme.colors.accent)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.16), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: .black.opacity(isPrimaryButtonHovering ? 0.30 : 0.24),
+                    radius: isPrimaryButtonHovering ? 9 : 3,
+                    x: 0,
+                    y: isPrimaryButtonHovering ? 3 : 1
+                )
+        }
+        .buttonStyle(SpringButtonStyle(kind: .primary, theme: theme))
+        .scaleEffect(isPrimaryButtonHovering ? 1.05 : 1)
+        .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isPrimaryButtonHovering)
+        .onHover { hovering in
+            isPrimaryButtonHovering = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
         }
     }
 

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 import Combine
+import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Session Type
 
@@ -189,5 +191,37 @@ class StatisticsManager: ObservableObject {
 
     func recentSessions(limit: Int = 20) -> [SessionRecord] {
         Array(allSessions().prefix(limit))
+    }
+}
+
+// MARK: - TEMPORARY: One-time migration export
+// TODO: Delete this extension after the historical data migration to the new backend is complete.
+
+extension StatisticsManager {
+    func exportSessionsToJSON() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "sessions_export.json"
+        panel.allowedContentTypes = [.json]
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        let sessions = allSessions().map { session in
+            [
+                "duration": session.duration,
+                "type": session.type,
+                "created_at": formatter.string(from: session.date)
+            ] as [String: Any]
+        }
+
+        do {
+            let data = try JSONSerialization.data(withJSONObject: sessions, options: [.prettyPrinted])
+            try data.write(to: url)
+            print("Exported \(sessions.count) sessions to \(url.path)")
+        } catch {
+            print("Failed to export sessions: \(error)")
+        }
     }
 }

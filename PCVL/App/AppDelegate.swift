@@ -11,6 +11,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
 
+    private var themePickerWindow: NSPanel?
+    private var themePickerGlobalMonitor: Any?
+    private var themePickerLocalMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Register custom fonts
         registerFonts()
@@ -35,11 +39,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel: viewModel,
             themeManager: themeManager,
             statsManager: statsManager,
-            onToggleFullscreen: { [weak self] in self?.toggleFullscreen() }
+            onToggleFullscreen: { [weak self] in self?.toggleFullscreen() },
+            onShowThemePicker: { [weak self] anchorRect in self?.showThemePicker(anchorRect: anchorRect) }
         )
 
         panelWindow = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 280, height: 140),
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 190),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -111,7 +116,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if localEventMonitor == nil {
             localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                if let self = self, event.window != self.panelWindow && event.window != self.statusItem.button?.window {
+                if let self = self,
+                   event.window != self.panelWindow,
+                   event.window != self.statusItem.button?.window,
+                   event.window != self.themePickerWindow {
                     self.handleOutsideClick()
                 }
                 return event
@@ -140,8 +148,79 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if panelWindow.isVisible {
             panelWindow.orderOut(nil)
             stopEventMonitors()
+            hideThemePicker()
             viewModel.updateMenuBarIcon()
         }
+    }
+
+    // MARK: - Theme Picker Flyout
+
+    /// Shows the theme list in its own borderless panel that pops out beside the
+    /// main panel (like a submenu), rather than rendering inline in the popup.
+    private func showThemePicker(anchorRect: CGRect) {
+        hideThemePicker()
+
+        let width = ThemeFlyoutView.width
+        let height = ThemeFlyoutView.height
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .popUpMenu
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .utilityWindow
+
+        let content = ThemeFlyoutView(theme: themeManager) { [weak self] selected in
+            self?.themeManager.currentTheme = selected
+        }
+        panel.contentView = NSHostingView(rootView: content)
+
+        let mainFrame = panelWindow.frame
+        let buttonTopScreenY = mainFrame.origin.y + mainFrame.height - anchorRect.minY
+        var originX = mainFrame.origin.x + mainFrame.width + 6
+        var originY = buttonTopScreenY - height
+
+        if let screenFrame = panelWindow.screen?.visibleFrame {
+            if originX + width > screenFrame.maxX {
+                originX = mainFrame.origin.x - width - 6
+            }
+            originY = min(originY, screenFrame.maxY - height)
+            originY = max(originY, screenFrame.minY)
+        }
+
+        panel.setFrameOrigin(NSPoint(x: originX, y: originY))
+        panel.orderFront(nil)
+        themePickerWindow = panel
+
+        themePickerGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.hideThemePicker()
+        }
+        themePickerLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            if let self = self, event.window != self.themePickerWindow {
+                self.hideThemePicker()
+            }
+            return event
+        }
+    }
+
+    private func hideThemePicker() {
+        if let monitor = themePickerGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+            themePickerGlobalMonitor = nil
+        }
+        if let monitor = themePickerLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+            themePickerLocalMonitor = nil
+        }
+        themePickerWindow?.orderOut(nil)
+        themePickerWindow = nil
     }
 
     // MARK: - Context Menu

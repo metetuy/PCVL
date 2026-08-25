@@ -8,19 +8,19 @@ struct StatsView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 14) {
+            VStack(spacing: 10) {
                 // Summary cards
                 summaryRow
-                    .padding(.top, 14)
+                    .padding(.top, 10)
 
                 // Weekly chart
                 weeklyChart
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
 
                 // Recent sessions
                 recentSessionsList
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
             }
         }
     }
@@ -28,43 +28,39 @@ struct StatsView: View {
     // MARK: - Summary Row
 
     private var summaryRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             statCard(
                 value: "\(statsManager.todaySessions())",
-                label: "Today",
-                icon: "checkmark.circle"
+                label: "Sessions"
             )
             statCard(
                 value: "\(statsManager.todayFocusMinutes())m",
-                label: "Focus",
-                icon: "clock"
+                label: "Focus"
             )
             statCard(
                 value: "\(statsManager.currentStreak())d",
                 label: "Streak",
-                icon: "flame"
+                valueColor: theme.colors.accent
             )
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
     }
 
-    private func statCard(value: String, label: String, icon: String) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(theme.currentFont.font(size: 12))
-                .foregroundColor(theme.colors.accent)
+    private func statCard(value: String, label: String, valueColor: Color? = nil) -> some View {
+        VStack(spacing: 2) {
             Text(value)
-                .font(theme.currentFont.font(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(theme.colors.text)
-            Text(label)
-                .font(theme.currentFont.font(size: 9, weight: .medium))
+                .font(theme.currentFont.font(size: 17, weight: .bold, design: .rounded))
+                .foregroundColor(valueColor ?? theme.colors.text)
+            Text(label.uppercased())
+                .font(theme.currentFont.font(size: 8, weight: .medium))
                 .foregroundColor(theme.colors.textSecondary)
                 .tracking(0.5)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(theme.colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
     }
 
     // MARK: - Weekly Chart
@@ -73,15 +69,15 @@ struct StatsView: View {
         let data = statsManager.weeklyData()
         let maxMinutes = max(data.map(\.minutes).max() ?? 1, 1)
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 6) {
             Text("THIS WEEK")
-                .font(theme.currentFont.font(size: 9, weight: .semibold))
+                .font(theme.currentFont.font(size: 8, weight: .semibold))
                 .tracking(1.5)
                 .foregroundColor(theme.colors.textSecondary)
 
-            HStack(alignment: .bottom, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 5) {
                 ForEach(Array(data.enumerated()), id: \.offset) { _, entry in
-                    VStack(spacing: 4) {
+                    VStack(spacing: 3) {
                         // Bar
                         RoundedRectangle(cornerRadius: 3)
                             .fill(
@@ -91,14 +87,14 @@ struct StatsView: View {
                             )
                             .frame(
                                 height: max(
-                                    CGFloat(entry.minutes) / CGFloat(maxMinutes) * 60,
+                                    CGFloat(entry.minutes) / CGFloat(maxMinutes) * 46,
                                     entry.minutes > 0 ? 4 : 2
                                 )
                             )
 
                         // Day label
                         Text(entry.day)
-                            .font(theme.currentFont.font(size: 8, weight: entry.isToday ? .bold : .regular))
+                            .font(theme.currentFont.font(size: 7, weight: entry.isToday ? .bold : .regular))
                             .foregroundColor(
                                 entry.isToday
                                     ? theme.colors.text
@@ -108,13 +104,14 @@ struct StatsView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 80)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 4)
+            .frame(height: 62)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 3)
         }
-        .padding(12)
+        .padding(10)
         .background(theme.colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
     }
 
     // MARK: - Recent Sessions
@@ -122,18 +119,18 @@ struct StatsView: View {
     private var recentSessionsList: some View {
         let sessions = statsManager.recentSessions(limit: 15)
 
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 6) {
             Text("RECENT")
-                .font(theme.currentFont.font(size: 9, weight: .semibold))
+                .font(theme.currentFont.font(size: 8, weight: .semibold))
                 .tracking(1.5)
                 .foregroundColor(theme.colors.textSecondary)
 
             if sessions.isEmpty {
                 Text("No sessions yet")
-                    .font(theme.currentFont.font(size: 12))
+                    .font(theme.currentFont.font(size: 11))
                     .foregroundColor(theme.colors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, 16)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(sessions.enumerated()), id: \.offset) { index, session in
@@ -147,40 +144,41 @@ struct StatsView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(10)
         .background(theme.colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
     }
 
     private func sessionRow(_ session: SessionRecord) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             // Type badge
             Circle()
                 .fill(badgeColor(for: session.sessionType))
-                .frame(width: 6, height: 6)
+                .frame(width: 5, height: 5)
 
             // Date
             Text(formattedDate(session.date))
-                .font(theme.currentFont.font(size: 11))
+                .font(theme.currentFont.font(size: 10))
                 .foregroundColor(theme.colors.text)
 
             Spacer()
 
             // Duration
             Text(session.durationFormatted)
-                .font(theme.currentFont.font(size: 11, weight: .medium, design: .monospaced))
+                .font(theme.currentFont.font(size: 10, weight: .medium, design: .monospaced))
                 .foregroundColor(theme.colors.textSecondary)
 
             // Type label
             Text(typeLabel(session.sessionType))
-                .font(theme.currentFont.font(size: 9, weight: .medium))
+                .font(theme.currentFont.font(size: 8, weight: .medium))
                 .foregroundColor(badgeColor(for: session.sessionType))
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background(badgeColor(for: session.sessionType).opacity(0.12))
                 .clipShape(Capsule())
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 5)
     }
 
     // MARK: - Helpers

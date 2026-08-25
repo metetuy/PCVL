@@ -16,6 +16,18 @@ extension Color {
         
         self.init(red: red, green: green, blue: blue)
     }
+
+    /// Blends this color toward white, for deriving a lighter variant used in panel gradients.
+    func lightened(by amount: CGFloat) -> Color {
+        let nsColor = NSColor(self).usingColorSpace(.deviceRGB) ?? NSColor(self)
+        return Color(nsColor: nsColor.blended(withFraction: amount, of: .white) ?? nsColor)
+    }
+
+    /// Blends this color toward black, for deriving a darker variant used in panel gradients.
+    func darkened(by amount: CGFloat) -> Color {
+        let nsColor = NSColor(self).usingColorSpace(.deviceRGB) ?? NSColor(self)
+        return Color(nsColor: nsColor.blended(withFraction: amount, of: .black) ?? nsColor)
+    }
 }
 
 enum AppTheme: String, CaseIterable, Identifiable {
@@ -41,6 +53,31 @@ enum AppTheme: String, CaseIterable, Identifiable {
     case redNavy = "Red Navy"
 
     var id: String { rawValue }
+
+    /// Swatch color used to represent this theme in pickers (e.g. the theme flyout).
+    var previewColor: Color {
+        switch self {
+        case .minimalist: return Color(nsColor: NSColor(red: 0.35, green: 0.35, blue: 0.38, alpha: 1))
+        case .dark: return Color(nsColor: NSColor(red: 0.95, green: 0.6, blue: 0.25, alpha: 1))
+        case .light: return Color(nsColor: NSColor(red: 0.3, green: 0.3, blue: 0.65, alpha: 1))
+        case .ocean: return Color(nsColor: NSColor(red: 0.25, green: 0.7, blue: 0.85, alpha: 1))
+        case .bloom: return Color(nsColor: NSColor(red: 0.95, green: 0.4, blue: 0.55, alpha: 1))
+
+        case .roseDark: return Color(hex: "#dd2d4a")
+        case .roseLight: return Color(hex: "#fb6f92")
+        case .pinkSoft: return Color(hex: "#ff8fab")
+        case .navyBlue: return Color(hex: "#415a77")
+        case .slateBlue: return Color(hex: "#3e5c76")
+        case .teaGreen: return Color(hex: "#1b4965")
+        case .slateDark: return Color(hex: "#596d83")
+        case .warmEarth: return Color(hex: "#5ca4a9")
+        case .navyGold: return Color(hex: "#faf0ca")
+        case .lightBlue: return Color(hex: "#274c77")
+        case .charcoalLight: return Color(hex: "#eff1f3")
+        case .creamTeal: return Color(hex: "#0d5c63")
+        case .redNavy: return Color(hex: "#d7263d")
+        }
+    }
 }
 
 // MARK: - Theme Colors
@@ -315,7 +352,7 @@ class ThemeManager: ObservableObject {
         case .navyGold:
             return ThemeColors(
                 background: Color(hex: "#0d3b66"),
-                surface: Color(hex: "#0d3b66"),
+                surface: Color(hex: "#114d86"),
                 text: Color(hex: "#faf0ca"),
                 textSecondary: Color(hex: "#faf0ca"),
                 accent: Color(hex: "#faf0ca"),
@@ -327,7 +364,7 @@ class ThemeManager: ObservableObject {
         case .lightBlue:
             return ThemeColors(
                 background: Color(hex: "#e7ecef"),
-                surface: Color(hex: "#e7ecef"),
+                surface: Color(hex: "#c9e0ee"),
                 text: Color(hex: "#274c77"),
                 textSecondary: Color(hex: "#274c77"),
                 accent: Color(hex: "#274c77"),
@@ -339,7 +376,7 @@ class ThemeManager: ObservableObject {
         case .charcoalLight:
             return ThemeColors(
                 background: Color(hex: "#223843"),
-                surface: Color(hex: "#223843"),
+                surface: Color(hex: "#2e4c5b"),
                 text: Color(hex: "#eff1f3"),
                 textSecondary: Color(hex: "#eff1f3"),
                 accent: Color(hex: "#eff1f3"),
@@ -351,7 +388,7 @@ class ThemeManager: ObservableObject {
         case .creamTeal:
             return ThemeColors(
                 background: Color(hex: "#fffffa"),
-                surface: Color(hex: "#fffffa"),
+                surface: Color(hex: "#f0f0eb"),
                 text: Color(hex: "#0d5c63"),
                 textSecondary: Color(hex: "#0d5c63"),
                 accent: Color(hex: "#0d5c63"),
@@ -363,7 +400,7 @@ class ThemeManager: ObservableObject {
         case .redNavy:
             return ThemeColors(
                 background: Color(hex: "#d7263d"),
-                surface: Color(hex: "#d7263d"),
+                surface: Color(hex: "#bd2136"),
                 text: Color(hex: "#02182b"),
                 textSecondary: Color(hex: "#02182b"),
                 accent: Color(hex: "#02182b"),
