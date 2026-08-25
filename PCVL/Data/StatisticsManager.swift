@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 import Combine
 import AppKit
 import UniformTypeIdentifiers
@@ -14,17 +13,11 @@ enum SessionType: String, Codable {
 
 // MARK: - Session Record
 
-@Model
-class SessionRecord {
+struct SessionRecord: Identifiable {
+    let id: Int
     var duration: Int
     var date: Date
     var type: String
-
-    init(duration: Int, date: Date, type: SessionType) {
-        self.duration = duration
-        self.date = date
-        self.type = type.rawValue
-    }
 
     var sessionType: SessionType {
         SessionType(rawValue: type) ?? .work
@@ -44,46 +37,56 @@ class SessionRecord {
 
 @MainActor
 class StatisticsManager: ObservableObject {
-    let modelContainer: ModelContainer
-    private var modelContext: ModelContext
+    @Published private(set) var sessions: [SessionRecord] = []
 
-    init() {
-        let schema = Schema([SessionRecord.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    private let apiClient: SessionAPIClient
+
+    init(apiClient: SessionAPIClient = SessionAPIClient()) {
+        self.apiClient = apiClient
+        Task { await refresh() }
+    }
+
+    // MARK: - Sync
+
+    func refresh() async {
         do {
-            modelContainer = try ModelContainer(for: schema, configurations: [config])
-            modelContext = modelContainer.mainContext
+            let remoteSessions = try await apiClient.fetchSessions()
+            sessions = remoteSessions
+                .map { SessionRecord(id: $0.id, duration: $0.duration, date: $0.createdAt, type: $0.type) }
+                .sorted { $0.date > $1.date }
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            print("Failed to refresh sessions from backend: \(error)")
         }
     }
 
     // MARK: - Record
 
     func deleteAllSessions() {
-        do {
-            try modelContext.delete(model: SessionRecord.self)
-            try modelContext.save()
-            objectWillChange.send()
-        } catch {
-            print("Failed to delete all sessions: \(error)")
+        Task {
+            do {
+                try await apiClient.deleteAllSessions()
+                await refresh()
+            } catch {
+                print("Failed to delete all sessions: \(error)")
+            }
         }
     }
 
     func recordSession(duration: Int, date: Date, type: SessionType) {
-        let record = SessionRecord(duration: duration, date: date, type: type)
-        modelContext.insert(record)
-        try? modelContext.save()
-        objectWillChange.send()
+        Task {
+            do {
+                _ = try await apiClient.createSession(duration: duration, type: type.rawValue)
+                await refresh()
+            } catch {
+                print("Failed to record session to backend: \(error)")
+            }
+        }
     }
 
     // MARK: - Queries
 
     func allSessions() -> [SessionRecord] {
-        let descriptor = FetchDescriptor<SessionRecord>(
-            sortBy: [SortDescriptor(\.date, order: .reverse)]
-        )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        sessions
     }
 
     func workSessions() -> [SessionRecord] {

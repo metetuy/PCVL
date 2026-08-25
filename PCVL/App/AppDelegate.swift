@@ -85,6 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             panelWindow.orderFront(nil)
             updateEventMonitors()
+            Task { await statsManager.refresh() }
         }
         viewModel.updateMenuBarIcon()
     }
@@ -139,6 +140,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleOutsideClick() {
+        guard panelWindow.attachedSheet == nil else { return }
         if !shouldPreventAutoClose {
             closePanel()
         }
