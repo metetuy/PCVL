@@ -36,7 +36,7 @@ final class SessionAPIClient {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init(baseURL: URL = URL(string: "http://127.0.0.1:8000")!, session: URLSession = .shared) {
+    init(baseURL: URL = Config.baseURL, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.session = session
 
