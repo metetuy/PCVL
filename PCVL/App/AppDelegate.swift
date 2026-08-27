@@ -147,6 +147,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePanel() {
         if panelWindow.isVisible {
+            // Drop the zoom so the panel reopens at its normal size next to the
+            // status item rather than screen-sized.
+            if let restored = preZoomFrame {
+                preZoomFrame = nil
+                panelWindow.setFrame(restored, display: false)
+            }
             panelWindow.orderOut(nil)
             stopEventMonitors()
             hideThemePicker()
@@ -420,26 +426,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
-    func toggleFullscreen() {
-        guard (panelWindow.screen ?? NSScreen.main) != nil else { return }
+    /// Frame to restore when leaving the zoomed state; nil while the panel is at
+    /// its normal size.
+    private var preZoomFrame: NSRect?
 
-        // Deferred: toggling full screen synchronously from a SwiftUI button
-        // action re-enters AppKit's layout pass on the still-laying-out
-        // hosting view and trips "-layoutSubtreeIfNeeded on a view which is
-        // already being laid out".
+    /// Expands the panel to fill the screen, and back again.
+    ///
+    /// This deliberately does not use NSWindow.toggleFullScreen(_:). AppKit's
+    /// full-screen transition on a borderless, non-activating panel re-enters the
+    /// window's frame update from a frame-change notification posted mid-layout,
+    /// which trips "-layoutSubtreeIfNeeded on a view which is already being laid
+    /// out". Driving the frame directly skips the full-screen Space machinery —
+    /// and unlike toggleFullScreen(_:), it actually resizes this panel.
+    func toggleFullscreen() {
+        guard let screen = panelWindow.screen ?? NSScreen.main else { return }
+
+        // Deferred: this runs synchronously from a SwiftUI button action, and
+        // resizing the window mid-update re-enters AppKit's layout pass.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if !self.panelWindow.styleMask.contains(.fullScreen) {
-                self.panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
+            if let restored = self.preZoomFrame {
+                self.preZoomFrame = nil
+                self.panelWindow.setFrame(restored, display: true, animate: true)
+            } else {
+                self.preZoomFrame = self.panelWindow.frame
+                self.panelWindow.setFrame(screen.visibleFrame, display: true, animate: true)
             }
-            self.panelWindow.toggleFullScreen(nil)
         }
     }
 
     func setAlwaysOnTop(_ enabled: Bool) {
-        panelWindow.isFloatingPanel = enabled
-        panelWindow.level = enabled ? .statusBar : .floating
-        updateEventMonitors()
+        // Deferred for the same reason as toggleFullscreen(): this is invoked
+        // synchronously from a SwiftUI .onChange, and mutating the panel's
+        // style mask / level mid-update re-enters AppKit's layout pass and
+        // trips "-layoutSubtreeIfNeeded on a view which is already being laid out".
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.panelWindow.isFloatingPanel = enabled
+            self.panelWindow.level = enabled ? .statusBar : .floating
+            self.updateEventMonitors()
+        }
     }
 
     func updateMenuBar(time: String, isRunning: Bool) {

@@ -75,7 +75,7 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .coordinateSpace(name: "panel")
-        .frame(width: 300, height: 190)
+        .frame(minWidth: 300, maxWidth: .infinity, minHeight: 190, maxHeight: .infinity)
         .background(panelGradient)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeManager.colors.text.opacity(0.08), lineWidth: 0.5))
