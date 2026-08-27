@@ -345,8 +345,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - TEMPORARY: One-time migration export
-    // TODO: Delete this button after the historical data migration to the new backend is complete.
+    // MARK: - Export
 
     private var exportButton: some View {
         Button {

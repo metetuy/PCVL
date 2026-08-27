@@ -85,7 +85,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             panelWindow.orderFront(nil)
             updateEventMonitors()
-            Task { await statsManager.refresh() }
         }
         viewModel.updateMenuBarIcon()
     }
@@ -160,6 +159,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shows the theme list in its own borderless panel that pops out beside the
     /// main panel (like a submenu), rather than rendering inline in the popup.
     private func showThemePicker(anchorRect: CGRect) {
+        // Deferred for the same reason as toggleFullscreen(): creating and
+        // ordering a new panel synchronously from a SwiftUI button action
+        // re-enters AppKit's layout pass mid-tap.
+        DispatchQueue.main.async { [weak self] in
+            self?.presentThemePicker(anchorRect: anchorRect)
+        }
+    }
+
+    private func presentThemePicker(anchorRect: CGRect) {
         hideThemePicker()
 
         let width = ThemeFlyoutView.width
@@ -413,13 +421,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func toggleFullscreen() {
-        if (panelWindow.screen ?? NSScreen.main) != nil {
-            if panelWindow.styleMask.contains(.fullScreen) {
-                panelWindow.toggleFullScreen(nil)
-            } else {
-                panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
-                panelWindow.toggleFullScreen(nil)
+        guard (panelWindow.screen ?? NSScreen.main) != nil else { return }
+
+        // Deferred: toggling full screen synchronously from a SwiftUI button
+        // action re-enters AppKit's layout pass on the still-laying-out
+        // hosting view and trips "-layoutSubtreeIfNeeded on a view which is
+        // already being laid out".
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if !self.panelWindow.styleMask.contains(.fullScreen) {
+                self.panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenPrimary]
             }
+            self.panelWindow.toggleFullScreen(nil)
         }
     }
 

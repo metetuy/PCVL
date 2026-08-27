@@ -11,6 +11,9 @@ struct TimerView: View {
     @State private var scrollAccumulator: CGFloat = 0
     @State private var lastHapticFeedbackTime: CFTimeInterval = 0
     @State private var isPrimaryButtonHovering = false
+    @State private var isResetButtonHovering = false
+    @State private var isFullscreenButtonHovering = false
+    @State private var hoveringMode: TimerMode?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,11 +45,37 @@ struct TimerView: View {
                         .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
                         .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.16), .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(
+                            color: .black.opacity(isResetButtonHovering ? 0.30 : 0.24),
+                            radius: isResetButtonHovering ? 9 : 3,
+                            x: 0,
+                            y: isResetButtonHovering ? 3 : 1
+                        )
                 }
                 .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
                 .disabled(viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 0.3 : 1)
-                .hoverEffect()
+                .scaleEffect(isResetButtonHovering ? 1.05 : 1)
+                .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isResetButtonHovering)
+                .onHover { hovering in
+                    isResetButtonHovering = hovering
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
 
                 // Timer display — clickable
                 timerDisplay
@@ -83,9 +112,35 @@ struct TimerView: View {
                         .frame(width: 26, height: 26)
                         .background(theme.colors.surface)
                         .clipShape(Circle())
+                        .overlay(
+                            Circle()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.16), .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(
+                            color: .black.opacity(isFullscreenButtonHovering ? 0.30 : 0.24),
+                            radius: isFullscreenButtonHovering ? 9 : 3,
+                            x: 0,
+                            y: isFullscreenButtonHovering ? 3 : 1
+                        )
                 }
                 .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
-                .hoverEffect()
+                .scaleEffect(isFullscreenButtonHovering ? 1.05 : 1)
+                .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isFullscreenButtonHovering)
+                .onHover { hovering in
+                    isFullscreenButtonHovering = hovering
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
             }
             .padding(.horizontal, 16)
 
@@ -114,11 +169,39 @@ struct TimerView: View {
                                 : Color.clear
                         )
                         .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(
+                                    LinearGradient(
+                                        colors: viewModel.mode == mode
+                                            ? [Color.white.opacity(0.16), .clear]
+                                            : [.clear, .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(
+                            color: .black.opacity(viewModel.mode == mode && hoveringMode == mode ? 0.30 : (viewModel.mode == mode ? 0.24 : 0)),
+                            radius: viewModel.mode == mode ? (hoveringMode == mode ? 9 : 3) : 0,
+                            x: 0,
+                            y: viewModel.mode == mode ? (hoveringMode == mode ? 3 : 1) : 0
+                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
                 .disabled(!viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 1 : (viewModel.mode == mode ? 1 : 0.4))
-                .hoverEffect()
+                .scaleEffect(hoveringMode == mode ? 1.05 : 1)
+                .animation(.spring(response: 0.30, dampingFraction: 0.60), value: hoveringMode)
+                .onHover { hovering in
+                    hoveringMode = hovering ? mode : (hoveringMode == mode ? nil : hoveringMode)
+                    if hovering {
+                        NSCursor.pointingHand.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
             }
         }
         .padding(2)

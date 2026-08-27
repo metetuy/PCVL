@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Combine
 import AppKit
 import UniformTypeIdentifiers
@@ -13,11 +14,17 @@ enum SessionType: String, Codable {
 
 // MARK: - Session Record
 
-struct SessionRecord: Identifiable {
-    let id: Int
+@Model
+class SessionRecord {
     var duration: Int
     var date: Date
     var type: String
+
+    init(duration: Int, date: Date, type: SessionType) {
+        self.duration = duration
+        self.date = date
+        self.type = type.rawValue
+    }
 
     var sessionType: SessionType {
         SessionType(rawValue: type) ?? .work
@@ -37,56 +44,46 @@ struct SessionRecord: Identifiable {
 
 @MainActor
 class StatisticsManager: ObservableObject {
-    @Published private(set) var sessions: [SessionRecord] = []
+    let modelContainer: ModelContainer
+    private var modelContext: ModelContext
 
-    private let apiClient: SessionAPIClient
-
-    init(apiClient: SessionAPIClient = SessionAPIClient()) {
-        self.apiClient = apiClient
-        Task { await refresh() }
-    }
-
-    // MARK: - Sync
-
-    func refresh() async {
+    init() {
+        let schema = Schema([SessionRecord.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
-            let remoteSessions = try await apiClient.fetchSessions()
-            sessions = remoteSessions
-                .map { SessionRecord(id: $0.id, duration: $0.duration, date: $0.createdAt, type: $0.type) }
-                .sorted { $0.date > $1.date }
+            modelContainer = try ModelContainer(for: schema, configurations: [config])
+            modelContext = modelContainer.mainContext
         } catch {
-            print("Failed to refresh sessions from backend: \(error)")
+            fatalError("Failed to create ModelContainer: \(error)")
         }
     }
 
     // MARK: - Record
 
     func deleteAllSessions() {
-        Task {
-            do {
-                try await apiClient.deleteAllSessions()
-                await refresh()
-            } catch {
-                print("Failed to delete all sessions: \(error)")
-            }
+        do {
+            try modelContext.delete(model: SessionRecord.self)
+            try modelContext.save()
+            objectWillChange.send()
+        } catch {
+            print("Failed to delete all sessions: \(error)")
         }
     }
 
     func recordSession(duration: Int, date: Date, type: SessionType) {
-        Task {
-            do {
-                _ = try await apiClient.createSession(duration: duration, type: type.rawValue)
-                await refresh()
-            } catch {
-                print("Failed to record session to backend: \(error)")
-            }
-        }
+        let record = SessionRecord(duration: duration, date: date, type: type)
+        modelContext.insert(record)
+        try? modelContext.save()
+        objectWillChange.send()
     }
 
     // MARK: - Queries
 
     func allSessions() -> [SessionRecord] {
-        sessions
+        let descriptor = FetchDescriptor<SessionRecord>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        return (try? modelContext.fetch(descriptor)) ?? []
     }
 
     func workSessions() -> [SessionRecord] {
@@ -197,10 +194,12 @@ class StatisticsManager: ObservableObject {
     }
 }
 
-// MARK: - TEMPORARY: One-time migration export
-// TODO: Delete this extension after the historical data migration to the new backend is complete.
+// MARK: - Export
 
 extension StatisticsManager {
+    /// Writes all recorded sessions to a user-chosen JSON file. Each entry is
+    /// `{ duration, type, created_at }` with an ISO8601 timestamp, so the file
+    /// can be re-imported or processed elsewhere.
     func exportSessionsToJSON() {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "sessions_export.json"
