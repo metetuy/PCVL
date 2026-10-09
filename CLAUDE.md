@@ -17,7 +17,9 @@ No Dock icon (LSUIElement = YES). Popup appears on menu bar click (NSPanel, not 
 - **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects
 - **TimerViewModel**: ObservableObject, drives all timer state, session recording, notifications
 - **ThemeManager**: Color schemes + font management, persisted via @AppStorage
-- **StatisticsManager**: SwiftData CRUD for SessionRecord models
+- **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches
+- **StatsAnalyzer**: Pure aggregation (periods, buckets, streaks, distributions) — no side effects
+- **StatsViewModel**: ObservableObject for the stats screen — range, period navigation, minutes/hours unit, formatting
 - **SwipeMonitor** (in PopoverView): NSEvent monitor for horizontal trackpad swipe to switch tabs
 
 ## Project structure
@@ -37,7 +39,9 @@ PCVL/
 ├── Themes/
 │   └── ThemeManager.swift      (AppTheme enum: Minimalist/Dark/Light/Ocean/Bloom + AppFont)
 ├── Data/
-│   └── StatisticsManager.swift (SwiftData SessionRecord, streak, weekly, today stats)
+│   ├── StatisticsManager.swift (SwiftData SessionRecord, range fetches, today summary)
+│   ├── StatsAnalytics.swift    (StatsRange, StatsTimeUnit, StatsSnapshot, StatsAnalyzer)
+│   └── StatsViewModel.swift    (stats screen state + formatting)
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
 ```
@@ -74,8 +78,16 @@ PCVL/
 
 ### Statistics (SwiftData)
 - `SessionRecord`: duration (Int seconds), date, type ("work"/"break"/"stopwatch")
-- Queries: today sessions, today focus minutes, current streak, weekly data (Mon–Sun), recent sessions
-- Streak = consecutive days with at least one focus session counting backwards from today
+- Ranges: Day (hourly bars) | Week (Mon–Sun) | Month | Year (monthly) | All (monthly, yearly beyond 3 years), with ‹ › period navigation
+- Time unit toggle: minutes or hours, persisted in UserDefaults (`statsTimeUnit`, `statsRange`)
+- Sessions are split at hour boundaries when aggregating, so long/overnight sessions land in the right buckets
+- Snapshot: totals per type, daily average, avg/longest session, best day, active days, peak hour/weekday, focus share, change vs previous period
+- Streak = consecutive days with at least one focus session counting backwards from today; longest streak also tracked
+- Charts use Swift Charts (system framework) with hover readouts
+
+### Fullscreen
+- Zoom sets the panel frame to `screen.visibleFrame` (not `toggleFullScreen`), restored on toggle/close
+- `PopoverView` treats width > 520 as expanded; Timer and Stats switch to scaled / dashboard layouts
 
 ### Tab navigation
 - Tabs: timer | stats | settings

@@ -7,11 +7,20 @@ import UserNotifications
 class TimerViewModel: ObservableObject {
     @Published var engine = TimerEngine()
     @Published var isBreak: Bool = false
-    
+    @Published private(set) var todayStats = TodayStats()
+
+    /// Today's recorded focus totals, cached so the fullscreen timer can show them
+    /// without querying the store on every tick.
+    struct TodayStats {
+        var focusSeconds = 0
+        var sessions = 0
+        var streak = 0
+    }
 
     private var timer: Timer?
     private var sessionStartDate: Date?
     private var statisticsManager: StatisticsManager?
+    private var statsObserver: AnyCancellable?
     var menuBarUpdater: ((String, Bool) -> Void)?
 
     enum AdjustableDuration {
@@ -104,6 +113,41 @@ class TimerViewModel: ObservableObject {
 
     func setStatisticsManager(_ manager: StatisticsManager) {
         self.statisticsManager = manager
+        statsObserver = manager.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshTodayStats() }
+        refreshTodayStats()
+    }
+
+    func refreshTodayStats() {
+        guard let statisticsManager else { return }
+        let today = statisticsManager.todayFocusSummary()
+        todayStats = TodayStats(
+            focusSeconds: today.seconds,
+            sessions: today.sessions,
+            streak: statisticsManager.currentStreak()
+        )
+    }
+
+    /// Today's focus time including the session currently in progress.
+    var liveTodayFocusSeconds: Int {
+        let inProgress = !isBreak && (isRunning || isPaused) ? engine.elapsedSeconds : 0
+        return todayStats.focusSeconds + inProgress
+    }
+
+    var liveTodayFocusText: String {
+        let seconds = liveTodayFocusSeconds
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+
+    /// Duration of the phase that follows the current countdown, for the "up next" hint.
+    var nextPhaseLabel: String? {
+        guard engine.mode == .countDown else { return nil }
+        return isBreak
+            ? "Up next · Focus \(workDuration / 60) min"
+            : "Up next · Break \(breakDuration / 60) min"
     }
 
     // MARK: - Actions

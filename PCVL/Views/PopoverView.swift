@@ -37,45 +37,22 @@ struct PopoverView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var themeManager: ThemeManager
     @ObservedObject var statsManager: StatisticsManager
+    @ObservedObject var statsViewModel: StatsViewModel
     var onToggleFullscreen: () -> Void
     var onShowThemePicker: (CGRect) -> Void
 
     @State private var selectedTab: AppTab = .timer
     @State private var swipeDelta: CGFloat = 0
 
-    var body: some View {
-        VStack(spacing: 0) {
-            // Tab bar
-            tabBar
-            Divider().background(themeManager.colors.ringTrack)
+    /// Width above which the panel is treated as zoomed to fill the screen.
+    static let expandedWidthThreshold: CGFloat = 520
 
-            // Content
-            ZStack {
-                switch selectedTab {
-                case .timer:
-                    TimerView(
-                        viewModel: viewModel,
-                        theme: themeManager,
-                        onToggleFullscreen: onToggleFullscreen
-                    )
-                case .stats:
-                    StatsView(
-                        statsManager: statsManager,
-                        theme: themeManager
-                    )
-                case .settings:
-                    SettingsView(
-                        viewModel: viewModel,
-                        theme: themeManager,
-                        statsManager: statsManager,
-                        onShowThemePicker: onShowThemePicker
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    var body: some View {
+        GeometryReader { geo in
+            content(isExpanded: geo.size.width > Self.expandedWidthThreshold)
         }
         .coordinateSpace(name: "panel")
-        .frame(width: 300, height: 190)
+        .frame(minWidth: 300, maxWidth: .infinity, minHeight: 190, maxHeight: .infinity)
         .background(panelGradient)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeManager.colors.text.opacity(0.08), lineWidth: 0.5))
@@ -89,6 +66,43 @@ struct PopoverView: View {
         }
         .onDisappear {
             SwipeMonitor.shared.stop()
+        }
+    }
+
+    private func content(isExpanded: Bool) -> some View {
+        VStack(spacing: 0) {
+            // Tab bar
+            tabBar(isExpanded: isExpanded)
+            Divider().background(themeManager.colors.ringTrack)
+
+            // Content
+            ZStack {
+                switch selectedTab {
+                case .timer:
+                    TimerView(
+                        viewModel: viewModel,
+                        theme: themeManager,
+                        isExpanded: isExpanded,
+                        onToggleFullscreen: onToggleFullscreen
+                    )
+                case .stats:
+                    StatsView(
+                        viewModel: statsViewModel,
+                        theme: themeManager,
+                        isExpanded: isExpanded,
+                        onToggleFullscreen: onToggleFullscreen
+                    )
+                case .settings:
+                    SettingsView(
+                        viewModel: viewModel,
+                        theme: themeManager,
+                        statsManager: statsManager,
+                        onShowThemePicker: onShowThemePicker
+                    )
+                    .frame(maxWidth: isExpanded ? 420 : .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -110,24 +124,26 @@ struct PopoverView: View {
 
     // MARK: - Tab Bar
 
-    private var tabBar: some View {
+    private func tabBar(isExpanded: Bool) -> some View {
         HStack(spacing: 0) {
-            tabButton(tab: .timer, icon: "timer")
-            tabButton(tab: .stats, icon: "chart.bar")
-            tabButton(tab: .settings, icon: "gear")
+            tabButton(tab: .timer, icon: "timer", isExpanded: isExpanded)
+            tabButton(tab: .stats, icon: "chart.bar", isExpanded: isExpanded)
+            tabButton(tab: .settings, icon: "gear", isExpanded: isExpanded)
         }
-        .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)
+        // Keep the icons grouped rather than spread across a screen-wide bar.
+        .frame(maxWidth: isExpanded ? 360 : .infinity)
+        .frame(maxWidth: .infinity, minHeight: isExpanded ? 40 : 32, maxHeight: isExpanded ? 40 : 32)
         .padding(.horizontal, 8)
     }
 
-    private func tabButton(tab: AppTab, icon: String) -> some View {
+    private func tabButton(tab: AppTab, icon: String, isExpanded: Bool) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
                 selectedTab = tab
             }
         } label: {
             Image(systemName: icon)
-                .font(themeManager.currentFont.font(size: 12))
+                .font(themeManager.currentFont.font(size: isExpanded ? 15 : 12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .foregroundColor(

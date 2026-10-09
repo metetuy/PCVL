@@ -1,11 +1,37 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Timer Metrics
+
+/// Size values for the timer layout. Compact matches the 300x190 popup; expanded
+/// scales everything up to fill the zoomed (fullscreen) panel.
+private struct TimerMetrics {
+    let isExpanded: Bool
+    let scale: CGFloat
+    let timeFontSize: CGFloat
+    let displayMaxWidth: CGFloat
+
+    init(size: CGSize, isExpanded: Bool) {
+        self.isExpanded = isExpanded
+        guard isExpanded else {
+            scale = 1
+            timeFontSize = 36
+            displayMaxWidth = .infinity
+            return
+        }
+        let fit = min(size.width / 300, size.height / 190)
+        scale = min(max(fit * 0.42, 1.4), 2.6)
+        timeFontSize = min(size.width * 0.17, size.height * 0.30)
+        displayMaxWidth = min(size.width * 0.62, 1100)
+    }
+}
+
 // MARK: - Timer View
 
 struct TimerView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
+    var isExpanded: Bool = false
     var onToggleFullscreen: () -> Void
 
     @State private var scrollAccumulator: CGFloat = 0
@@ -16,69 +42,46 @@ struct TimerView: View {
     @State private var hoveringMode: TimerMode?
 
     var body: some View {
+        GeometryReader { geo in
+            layout(TimerMetrics(size: geo.size, isExpanded: isExpanded))
+        }
+        .onAppear { viewModel.refreshTodayStats() }
+    }
+
+    private func layout(_ m: TimerMetrics) -> some View {
         VStack(spacing: 0) {
             // Top row: mode toggle + label
             HStack {
-                modeToggle
+                modeToggle(m)
                 Spacer()
                 Text(viewModel.modeLabel)
-                    .font(theme.currentFont.font(size: 8, weight: .semibold))
-                    .tracking(1.5)
+                    .font(theme.currentFont.font(size: 8 * m.scale, weight: .semibold))
+                    .tracking(1.5 * m.scale)
                     .foregroundColor(theme.colors.textSecondary)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, 16 * m.scale)
+            .padding(.top, 8 * m.scale)
 
             Spacer()
 
             // Center: reset | time + progress line | fullscreen
-            HStack(spacing: 12) {
-                // Reset button
-                Button {
+            HStack(spacing: 12 * m.scale) {
+                circleButton(
+                    icon: "arrow.counterclockwise",
+                    iconSize: 11,
+                    isHovering: $isResetButtonHovering,
+                    metrics: m
+                ) {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         viewModel.reset()
                     }
-                } label: {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(theme.currentFont.font(size: 11, weight: .medium))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 26, height: 26)
-                        .background(theme.colors.surface)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.16), .clear],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
-                        )
-                        .shadow(
-                            color: .black.opacity(isResetButtonHovering ? 0.30 : 0.24),
-                            radius: isResetButtonHovering ? 9 : 3,
-                            x: 0,
-                            y: isResetButtonHovering ? 3 : 1
-                        )
                 }
-                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
                 .disabled(viewModel.isIdle)
                 .opacity(viewModel.isIdle ? 0.3 : 1)
-                .scaleEffect(isResetButtonHovering ? 1.05 : 1)
-                .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isResetButtonHovering)
-                .onHover { hovering in
-                    isResetButtonHovering = hovering
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
-                    }
-                }
 
                 // Timer display — clickable
-                timerDisplay
+                timerDisplay(m)
+                    .frame(maxWidth: m.displayMaxWidth)
                     .overlay {
                         TimerScrollWheelMonitor(
                             isEnabled: viewModel.editableCountdownDuration != nil,
@@ -86,71 +89,79 @@ struct TimerView: View {
                         )
                         .allowsHitTesting(false)
                     }
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            if viewModel.isCompleted {
-                                if viewModel.isBreak {
-                                    viewModel.skipToWork()
-                                } else {
-                                    viewModel.skipToBreak()
-                                }
-                            } else if viewModel.isRunning {
-                                viewModel.pause()
-                            } else {
-                                viewModel.start()
-                            }
-                        }
-                    }
+                    .onTapGesture(perform: primaryButtonTapped)
 
-                // Fullscreen button
-                Button {
-                    onToggleFullscreen()
-                } label: {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(theme.currentFont.font(size: 9, weight: .medium))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 26, height: 26)
-                        .background(theme.colors.surface)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [Color.white.opacity(0.16), .clear],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
-                        )
-                        .shadow(
-                            color: .black.opacity(isFullscreenButtonHovering ? 0.30 : 0.24),
-                            radius: isFullscreenButtonHovering ? 9 : 3,
-                            x: 0,
-                            y: isFullscreenButtonHovering ? 3 : 1
-                        )
-                }
-                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
-                .scaleEffect(isFullscreenButtonHovering ? 1.05 : 1)
-                .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isFullscreenButtonHovering)
-                .onHover { hovering in
-                    isFullscreenButtonHovering = hovering
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
-                    }
-                }
+                circleButton(
+                    icon: m.isExpanded ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                    iconSize: 9,
+                    isHovering: $isFullscreenButtonHovering,
+                    metrics: m,
+                    action: onToggleFullscreen
+                )
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 16 * m.scale)
+            .frame(maxWidth: .infinity)
 
             Spacer()
+
+            if m.isExpanded {
+                todaySummary(m)
+                    .padding(.horizontal, 16 * m.scale)
+                    .padding(.bottom, 20 * m.scale)
+            }
+        }
+    }
+
+    // MARK: - Circle Button
+
+    private func circleButton(
+        icon: String,
+        iconSize: CGFloat,
+        isHovering: Binding<Bool>,
+        metrics m: TimerMetrics,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(theme.currentFont.font(size: iconSize * m.scale, weight: .medium))
+                .foregroundColor(theme.colors.textSecondary)
+                .frame(width: 26 * m.scale, height: 26 * m.scale)
+                .background(theme.colors.surface)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.16), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: .black.opacity(isHovering.wrappedValue ? 0.30 : 0.24),
+                    radius: isHovering.wrappedValue ? 9 : 3,
+                    x: 0,
+                    y: isHovering.wrappedValue ? 3 : 1
+                )
+        }
+        .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
+        .scaleEffect(isHovering.wrappedValue ? 1.05 : 1)
+        .animation(.spring(response: 0.30, dampingFraction: 0.60), value: isHovering.wrappedValue)
+        .onHover { hovering in
+            isHovering.wrappedValue = hovering
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
         }
     }
 
     // MARK: - Mode Toggle
 
-    private var modeToggle: some View {
+    private func modeToggle(_ m: TimerMetrics) -> some View {
         HStack(spacing: 0) {
             ForEach(TimerMode.allCases, id: \.self) { mode in
                 Button {
@@ -159,10 +170,10 @@ struct TimerView: View {
                     }
                 } label: {
                     Text(mode == .countDown ? "Timer" : "Stopwatch")
-                        .font(theme.currentFont.font(size: 9, weight: .medium))
+                        .font(theme.currentFont.font(size: 9 * m.scale, weight: .medium))
                         .foregroundColor(viewModel.mode == mode ? theme.colors.accent : theme.colors.textSecondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8 * m.scale)
+                        .padding(.vertical, 4 * m.scale)
                         .background(
                             viewModel.mode == mode
                                 ? theme.colors.accent.opacity(0.12)
@@ -204,47 +215,92 @@ struct TimerView: View {
                 }
             }
         }
-        .padding(2)
+        .padding(2 * m.scale)
         .background(theme.colors.surface)
         .clipShape(Capsule())
     }
 
     // MARK: - Timer Display (time + progress line)
 
-    private var timerDisplay: some View {
-        VStack(spacing: 6) {
+    private func timerDisplay(_ m: TimerMetrics) -> some View {
+        VStack(spacing: 6 * m.scale) {
             // Time text
             Text(viewModel.engine.formattedTime)
-                .font(theme.timerFont(size: 36, weight: .thin))
+                .font(theme.timerFont(size: m.timeFontSize, weight: .thin))
                 .foregroundColor(theme.colors.text)
                 .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
 
             // Progress line
+            let lineHeight = min(3 * m.scale, 6)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     // Track
-                    RoundedRectangle(cornerRadius: 1.5)
+                    RoundedRectangle(cornerRadius: lineHeight / 2)
                         .fill(theme.colors.ringTrack)
-                        .frame(height: 3)
+                        .frame(height: lineHeight)
 
                     // Fill (countdown only)
                     if viewModel.mode == .countDown {
-                        RoundedRectangle(cornerRadius: 1.5)
+                        RoundedRectangle(cornerRadius: lineHeight / 2)
                             .fill(viewModel.isBreak ? theme.colors.breakRing : theme.colors.timerRing)
-                            .frame(width: geo.size.width * viewModel.engine.progress, height: 3)
+                            .frame(width: geo.size.width * viewModel.engine.progress, height: lineHeight)
                             .animation(.linear(duration: 0.3), value: viewModel.engine.progress)
                     }
                 }
             }
-            .frame(height: 3)
+            .frame(height: lineHeight)
 
-            primaryButton
+            if m.isExpanded, let next = viewModel.nextPhaseLabel {
+                Text(next.uppercased())
+                    .font(theme.currentFont.font(size: 8 * m.scale, weight: .semibold))
+                    .tracking(1.5 * m.scale)
+                    .foregroundColor(theme.colors.textSecondary)
+                    .padding(.vertical, 4 * m.scale)
+            }
+
+            primaryButton(m)
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onChange(of: viewModel.editableCountdownDuration) { _, _ in
             scrollAccumulator = 0
         }
+    }
+
+    // MARK: - Today Summary (expanded only)
+
+    private func todaySummary(_ m: TimerMetrics) -> some View {
+        HStack(spacing: 8 * m.scale) {
+            summaryCard(value: viewModel.liveTodayFocusText, label: "Focus today", metrics: m)
+            summaryCard(value: "\(viewModel.todayStats.sessions)", label: "Sessions today", metrics: m)
+            summaryCard(
+                value: "\(viewModel.todayStats.streak)d",
+                label: "Streak",
+                valueColor: theme.colors.accent,
+                metrics: m
+            )
+        }
+        .frame(maxWidth: min(m.displayMaxWidth, 520 * m.scale))
+    }
+
+    private func summaryCard(value: String, label: String, valueColor: Color? = nil, metrics m: TimerMetrics) -> some View {
+        VStack(spacing: 2 * m.scale) {
+            Text(value)
+                .font(theme.currentFont.font(size: 15 * m.scale, weight: .bold, design: .rounded))
+                .foregroundColor(valueColor ?? theme.colors.text)
+                .contentTransition(.numericText())
+            Text(label.uppercased())
+                .font(theme.currentFont.font(size: 7 * m.scale, weight: .medium))
+                .foregroundColor(theme.colors.textSecondary)
+                .tracking(0.5 * m.scale)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8 * m.scale)
+        .background(theme.colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8 * m.scale))
+        .overlay(RoundedRectangle(cornerRadius: 8 * m.scale).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
     }
 
     // MARK: - Primary Button
@@ -277,13 +333,13 @@ struct TimerView: View {
         }
     }
 
-    private var primaryButton: some View {
+    private func primaryButton(_ m: TimerMetrics) -> some View {
         Button(action: primaryButtonTapped) {
             Text(primaryButtonLabel)
-                .font(theme.currentFont.font(size: 11.5, weight: .semibold))
+                .font(theme.currentFont.font(size: 11.5 * m.scale, weight: .semibold))
                 .foregroundColor(viewModel.isRunning ? theme.colors.text : theme.colors.background)
-                .frame(minWidth: 78, minHeight: 25)
-                .padding(.horizontal, 15)
+                .frame(minWidth: 78 * m.scale, minHeight: 25 * m.scale)
+                .padding(.horizontal, 15 * m.scale)
                 .background(viewModel.isRunning ? theme.colors.text.opacity(0.12) : theme.colors.accent)
                 .clipShape(Capsule())
                 .overlay(
