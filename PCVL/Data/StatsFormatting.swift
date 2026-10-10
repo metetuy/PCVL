@@ -127,6 +127,15 @@ enum StatsFormat {
         date.formatted(.dateTime.month(.abbreviated).day())
     }
 
+    /// "Oct 3", with the year when it is not the current one ("Oct 3, 2025").
+    static func dayText(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.component(.year, from: date) == calendar.component(.year, from: Date()) {
+            return shortDate(date)
+        }
+        return date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
     // MARK: Sessions
 
     static func sessionDate(_ date: Date) -> String {

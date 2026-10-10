@@ -214,12 +214,17 @@ struct TaskTests {
         let analytics = TaskAnalyticsViewModel(statsManager: stats, taskManager: taskManager)
         analytics.isActive = true
         #expect(analytics.summaries.map(\.title) == ["Write", "No task"])
-        #expect(analytics.selected?.taskID == id, "the largest task is selected first")
+        #expect(analytics.activeTaskID == id)
         #expect(analytics.totalFocusSeconds == 2100)
-        #expect(analytics.progress.map(\.totalSeconds) == [0, 600, 900])
+        #expect(analytics.taggedSeconds == 900)
+        #expect(analytics.untaggedSeconds == 1200)
+
+        analytics.toggleSelection(try #require(analytics.untagged).id)
+        #expect(analytics.selectedSessions.map(\.duration) == [1200])
 
         analytics.assignUntagged(to: id)
         #expect(analytics.summaries.map(\.title) == ["Write"])
-        #expect(analytics.selected?.totalSeconds == 2100)
+        #expect(analytics.selected?.totalSeconds == 2100, "the task is selected after assigning")
+        #expect(analytics.selectedSessions.map(\.duration) == [300, 600, 1200], "newest first")
     }
 }

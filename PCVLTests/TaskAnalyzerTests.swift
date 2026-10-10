@@ -15,7 +15,13 @@ struct TaskAnalyzerTests {
     }
 
     private func session(_ taskID: UUID?, hoursFromStart: Double, minutes: Int) -> TaskSessionItem {
-        TaskSessionItem(date: start.addingTimeInterval(hoursFromStart * 3600), duration: minutes * 60, taskID: taskID)
+        TaskSessionItem(
+            id: UUID(),
+            date: start.addingTimeInterval(hoursFromStart * 3600),
+            duration: minutes * 60,
+            type: .work,
+            taskID: taskID
+        )
     }
 
     private var tasks: [TaskItem] {
@@ -43,9 +49,9 @@ struct TaskAnalyzerTests {
         #expect(reportSummary.activeDays == 2)
     }
 
-    @Test func orderedByTotalWithUnworkedTasksAndNoTaskLast() {
+    @Test func openTasksFirstThenDoneThenNoTask() {
         let summaries = analyzer.summaries(tasks: tasks, sessions: sessions)
-        #expect(summaries.map(\.title) == ["Report", "Refactor", "Idle", "No task"])
+        #expect(summaries.map(\.title) == ["Report", "Idle", "Refactor", "No task"])
         #expect(summaries.last?.isUntagged == true)
         #expect(summaries.first { $0.taskID == refactor }?.isDone == true)
     }
@@ -53,7 +59,7 @@ struct TaskAnalyzerTests {
     @Test func sharesAreOfAllFocusTime() {
         let summaries = analyzer.summaries(tasks: tasks, sessions: sessions)
         let total = 360.0
-        #expect(summaries.map(\.share) == [230 / total, 30 / total, 0, 100 / total])
+        #expect(summaries.map(\.share) == [230 / total, 0, 30 / total, 100 / total])
     }
 
     @Test func noTaskEntryOnlyWhenThereIsUntaggedTime() {
@@ -61,11 +67,28 @@ struct TaskAnalyzerTests {
         #expect(!analyzer.summaries(tasks: tasks, sessions: tagged).contains { $0.isUntagged })
     }
 
-    @Test func progressIsARunningTotalFromZero() {
-        let points = analyzer.progress(for: report, sessions: sessions.reversed())
-        #expect(points.map(\.totalSeconds) == [0, 50 * 60, 230 * 60])
-        #expect(points.first?.date == start)
-        #expect(points.last?.date == start.addingTimeInterval(22.5 * 3600 + 180 * 60))
-        #expect(analyzer.progress(for: idle, sessions: sessions).isEmpty)
+    @Test func doneTasksCarryTheirDates() throws {
+        let refactorSummary = try #require(analyzer.summaries(tasks: tasks, sessions: sessions).first { $0.taskID == refactor })
+        #expect(refactorSummary.createdAt == start)
+        #expect(refactorSummary.completedAt == start)
+        #expect(refactorSummary.isDone)
+    }
+
+    @Test func blockUnitKeepsTheLargestTotalWithinSixtyBlocks() {
+        #expect(TaskAnalyzer.blockUnitHours(maxSeconds: 0) == 1)
+        #expect(TaskAnalyzer.blockUnitHours(maxSeconds: 52 * 3600) == 1)
+        #expect(TaskAnalyzer.blockUnitHours(maxSeconds: 61 * 3600) == 2)
+        #expect(TaskAnalyzer.blockUnitHours(maxSeconds: 400 * 3600) == 10)
+    }
+
+    @Test func menuTitlesTellSameNamedTasksApart() {
+        let first = TaskItem(id: UUID(), title: "Write", createdAt: start, completedAt: start.addingTimeInterval(86400), focusSeconds: 0, sessions: 0)
+        let second = TaskItem(id: UUID(), title: "Write", createdAt: start.addingTimeInterval(86400 * 3), completedAt: nil, focusSeconds: 0, sessions: 0)
+        let other = TaskItem(id: UUID(), title: "Read", createdAt: start, completedAt: nil, focusSeconds: 0, sessions: 0)
+        let all = [first, second, other]
+        #expect(TasksViewModel.menuTitle(for: other, among: all) == "Read")
+        #expect(TasksViewModel.menuTitle(for: second, among: all).hasPrefix("Write (created "))
+        #expect(TasksViewModel.menuTitle(for: first, among: all).hasPrefix("Write (done · created "))
+        #expect(TasksViewModel.menuTitle(for: first, among: all) != TasksViewModel.menuTitle(for: second, among: all))
     }
 }

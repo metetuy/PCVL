@@ -1,19 +1,17 @@
 import SwiftUI
-import Charts
 
 // MARK: - Task Analytics Section
 
-/// The top of the analytics screen: where focus went, per task, over all time. A
-/// task's hours are the plain sum of its sessions, independent of the period the
-/// time charts below are showing.
+/// The top of the analytics screen: where focus went, per task, over all time.
+/// Every task is a card whose total is drawn as hour blocks: a task's hours are the
+/// plain sum of its sessions, independent of the period the time charts below show.
+/// Selecting a card lists the sessions behind its total.
 struct TaskAnalyticsSection: View {
     @ObservedObject var viewModel: TaskAnalyticsViewModel
     @ObservedObject var theme: ThemeManager
-    let isWide: Bool
     let onShowTasks: () -> Void
 
-    private let s: CGFloat = 1.2
-    private let detailWidth: CGFloat = 420
+    @State private var pendingAssignment: TaskItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -21,56 +19,142 @@ struct TaskAnalyticsSection: View {
 
             if viewModel.summaries.isEmpty {
                 emptyCard
-            } else if isWide {
-                HStack(alignment: .top, spacing: 14) {
-                    totalsCard
-                    detailCard
-                        .frame(width: detailWidth)
-                }
             } else {
-                totalsCard
-                detailCard
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 12)], alignment: .leading, spacing: 12) {
+                    ForEach(viewModel.summaries) { summary in
+                        TaskCard(
+                            summary: summary,
+                            viewModel: viewModel,
+                            isCurrent: summary.taskID != nil && summary.taskID == viewModel.activeTaskID,
+                            isSelected: summary.id == viewModel.selectedID,
+                            theme: theme
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                viewModel.toggleSelection(summary.id)
+                            }
+                        }
+                    }
+                }
+
+                if let selected = viewModel.selected {
+                    sessionsPanel(selected)
+                        .transition(.opacity)
+                }
             }
+        }
+        .alert(
+            "Assign to “\(pendingAssignment?.title ?? "")”?",
+            isPresented: Binding(get: { pendingAssignment != nil }, set: { if !$0 { pendingAssignment = nil } })
+        ) {
+            Button("Cancel", role: .cancel) { }
+            Button("Assign") {
+                if let task = pendingAssignment {
+                    viewModel.assignUntagged(to: task.id)
+                }
+            }
+        } message: {
+            let untagged = viewModel.untagged
+            Text("All \(untagged?.sessions ?? 0) focus sessions without a task (\(viewModel.durationText(untagged?.totalSeconds ?? 0))) will count toward it. Single sessions can be moved back with a right click on them.")
         }
     }
 
+    // MARK: - Header
+
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text("Tasks")
-                .font(theme.currentFont.font(size: 20, weight: .semibold))
-                .foregroundColor(theme.colors.text)
-            Text("All time")
-                .font(theme.currentFont.font(size: 11, weight: .medium))
-                .foregroundColor(theme.colors.textSecondary)
-            Spacer()
-            if viewModel.totalFocusSeconds > 0 {
-                Text("\(viewModel.durationText(viewModel.totalFocusSeconds)) of focus recorded")
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("Tasks")
+                    .font(theme.currentFont.font(size: 20, weight: .semibold))
+                    .foregroundColor(theme.colors.text)
+                Text("All time")
                     .font(theme.currentFont.font(size: 11, weight: .medium))
+                    .foregroundColor(theme.colors.textSecondary)
+                Spacer()
+                if !viewModel.summaries.isEmpty {
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(theme.colors.accent)
+                            .frame(width: 8, height: 8)
+                        Text(viewModel.blockLegend)
+                    }
+                    .font(theme.currentFont.font(size: 10, weight: .medium))
+                    .foregroundColor(theme.colors.textSecondary)
+                }
+            }
+            if viewModel.totalFocusSeconds > 0 {
+                Text(summaryLine)
+                    .font(theme.currentFont.font(size: 11))
                     .foregroundColor(theme.colors.textSecondary)
             }
         }
     }
 
-    // MARK: - Totals
+    private var summaryLine: String {
+        var parts = ["\(viewModel.durationText(viewModel.totalFocusSeconds)) of focus"]
+        if viewModel.taggedSeconds > 0 {
+            parts.append("\(viewModel.durationText(viewModel.taggedSeconds)) on tasks")
+        }
+        if viewModel.untaggedSeconds > 0 {
+            parts.append("\(viewModel.durationText(viewModel.untaggedSeconds)) without a task")
+        }
+        return parts.joined(separator: " · ")
+    }
 
-    private var totalsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Total by task", theme: theme, scale: s)
-            VStack(spacing: 2) {
-                ForEach(viewModel.summaries) { summary in
-                    TaskTotalRow(
-                        summary: summary,
-                        fraction: viewModel.barFraction(summary),
-                        duration: viewModel.durationText(summary.totalSeconds),
-                        share: viewModel.shareText(summary),
-                        isSelected: summary.id == viewModel.selectedID,
-                        theme: theme
-                    ) {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            viewModel.select(summary.id)
+    // MARK: - Sessions Panel
+
+    private func sessionsPanel(_ summary: TaskSummary) -> some View {
+        let sessions = viewModel.selectedSessions
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                SectionHeader(title: "Sessions behind", theme: theme, scale: 1.2)
+                Text(summary.title)
+                    .font(theme.currentFont.font(size: 12, weight: .semibold))
+                    .foregroundColor(theme.colors.text)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { viewModel.toggleSelection(summary.id) }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(theme.currentFont.font(size: 10, weight: .semibold))
+                        .foregroundColor(theme.colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .hoverEffect()
+                .help("Close")
+            }
+
+            Text(viewModel.detailText(for: summary))
+                .font(theme.currentFont.font(size: 10.5, weight: .medium))
+                .foregroundColor(theme.colors.textSecondary)
+
+            if summary.isUntagged {
+                untaggedNote
+            }
+
+            if !sessions.isEmpty {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                            SessionRow(session: session, theme: theme, scale: 1.2)
+                                .contextMenu {
+                                    SessionTaskMenu(
+                                        session: session,
+                                        tasks: viewModel.tasks,
+                                        menuTitle: viewModel.menuTitle(for:),
+                                        onAssign: viewModel.assign(_:to:)
+                                    )
+                                }
+                            if index < sessions.count - 1 {
+                                Divider().background(theme.colors.ringTrack)
+                            }
                         }
                     }
+                    .padding(.trailing, 6)
                 }
+                .frame(maxHeight: 260)
             }
         }
         .padding(14)
@@ -78,14 +162,52 @@ struct TaskAnalyticsSection: View {
         .cardBackground(theme, radius: 10)
     }
 
-    // MARK: - Detail
-
-    @ViewBuilder
-    private var detailCard: some View {
-        if let summary = viewModel.selected {
-            TaskDetailCard(viewModel: viewModel, summary: summary, theme: theme, onShowTasks: onShowTasks)
+    private var untaggedNote: some View {
+        HStack(spacing: 12) {
+            Text("Focus recorded without a task, such as sessions from before tasks existed.")
+                .font(theme.currentFont.font(size: 10.5))
+                .foregroundColor(theme.colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            if viewModel.hasTasks {
+                Menu {
+                    ForEach(viewModel.tasks) { task in
+                        Button(viewModel.menuTitle(for: task)) { pendingAssignment = task }
+                    }
+                } label: {
+                    actionLabel("Assign all to a task…", icon: "arrow.right.circle")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .hoverEffect()
+            } else {
+                Button(action: onShowTasks) {
+                    actionLabel("Create a task first", icon: "plus.circle")
+                }
+                .buttonStyle(.plain)
+                .hoverEffect()
+            }
         }
     }
+
+    private func actionLabel(_ text: String, icon: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(theme.currentFont.font(size: 11, weight: .medium))
+            Text(text)
+                .font(theme.currentFont.font(size: 11, weight: .semibold))
+        }
+        .foregroundColor(theme.colors.accent)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(theme.colors.accent.opacity(0.12))
+        .clipShape(Capsule())
+        .contentShape(Capsule())
+    }
+
+    // MARK: - Empty
 
     private var emptyCard: some View {
         VStack(spacing: 8) {
@@ -107,269 +229,165 @@ struct TaskAnalyticsSection: View {
     }
 }
 
-// MARK: - Task Total Row
+// MARK: - Task Card
 
-/// One task in the totals list: title, all-time total, share and a bar relative to
-/// the largest task.
-private struct TaskTotalRow: View {
+/// One task: its all-time total as a number and as hour blocks, its session count,
+/// and when it was created and finished (or last worked on).
+private struct TaskCard: View {
     let summary: TaskSummary
-    let fraction: Double
-    let duration: String
-    let share: String
+    @ObservedObject var viewModel: TaskAnalyticsViewModel
+    let isCurrent: Bool
     let isSelected: Bool
     @ObservedObject var theme: ThemeManager
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(summary.title)
-                        .font(theme.currentFont.font(size: 12.5, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(summary.isUntagged || summary.isDone ? theme.colors.textSecondary : theme.colors.text)
-                        .strikethrough(summary.isDone, color: theme.colors.textSecondary)
-                        .italic(summary.isUntagged)
-                        .lineLimit(1)
-                    if summary.isDone {
-                        badge("DONE")
-                    }
-                    Spacer(minLength: 8)
-                    Text(summary.sessions > 0 ? duration : "—")
-                        .font(theme.currentFont.font(size: 12.5, weight: .bold, design: .rounded))
-                        .foregroundColor(theme.colors.text)
-                    Text(summary.sessions > 0 ? share : "")
-                        .font(theme.currentFont.font(size: 10, weight: .medium))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 34, alignment: .trailing)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(summary.title)
+                    .font(theme.currentFont.font(size: 13, weight: .semibold))
+                    .foregroundColor(summary.isDone || summary.isUntagged ? theme.colors.textSecondary : theme.colors.text)
+                    .lineLimit(2)
+                Spacer(minLength: 6)
+                if isCurrent {
+                    badge("CURRENT", color: theme.colors.accent)
+                } else if summary.isDone {
+                    badge("DONE", color: theme.colors.textSecondary)
                 }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(theme.colors.ringTrack)
-                        Capsule()
-                            .fill(barColor)
-                            .frame(width: summary.totalSeconds > 0 ? max(geo.size.width * fraction, 3) : 0)
-                    }
-                }
-                .frame(height: 4)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(isSelected ? theme.colors.accent.opacity(0.10) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .contentShape(Rectangle())
+
+            HStack(alignment: .firstTextBaseline) {
+                Text(summary.sessions > 0 ? viewModel.durationText(summary.totalSeconds) : "—")
+                    .font(theme.currentFont.font(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(theme.colors.text)
+                    .contentTransition(.numericText())
+                Spacer()
+                Text("\(summary.sessions) session\(summary.sessions == 1 ? "" : "s")")
+                    .font(theme.currentFont.font(size: 10, weight: .medium))
+                    .foregroundColor(theme.colors.textSecondary)
+            }
+
+            HourBlocks(value: viewModel.blocks(for: summary), color: blockColor, theme: theme)
+
+            Spacer(minLength: 0)
+
+            Text(viewModel.datesText(for: summary))
+                .font(theme.currentFont.font(size: 9.5, weight: .medium))
+                .foregroundColor(theme.colors.textSecondary)
+                .lineLimit(1)
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 156, alignment: .topLeading)
+        .background(theme.colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(border)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(perform: action)
         .hoverEffect()
+        .help(isSelected ? "Hide the sessions behind this total" : "Show the sessions behind this total")
     }
 
-    private var barColor: Color {
-        if summary.isUntagged { return theme.colors.textSecondary.opacity(0.5) }
+    @ViewBuilder
+    private var border: some View {
+        let shape = RoundedRectangle(cornerRadius: 10)
+        if isSelected {
+            shape.stroke(theme.colors.accent, lineWidth: 1.5)
+        } else if summary.isUntagged {
+            shape.stroke(theme.colors.textSecondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        } else {
+            shape.stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5)
+        }
+    }
+
+    private var blockColor: Color {
+        if summary.isUntagged { return theme.colors.textSecondary.opacity(0.55) }
         return summary.isDone ? theme.colors.accent.opacity(0.5) : theme.colors.accent
     }
 
-    private func badge(_ text: String) -> some View {
+    private func badge(_ text: String, color: Color) -> some View {
         Text(text)
             .font(theme.currentFont.font(size: 8, weight: .semibold))
             .tracking(0.8)
-            .foregroundColor(theme.colors.textSecondary)
+            .foregroundColor(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(theme.colors.textSecondary.opacity(0.12))
+            .background(color.opacity(0.12))
             .clipShape(Capsule())
+            .fixedSize()
     }
 }
 
-// MARK: - Task Detail Card
+// MARK: - Hour Blocks
 
-/// The selected task: its total, session stats, when it was worked on, and its
-/// running total over time. For the time without a task it offers to assign it.
-private struct TaskDetailCard: View {
-    @ObservedObject var viewModel: TaskAnalyticsViewModel
-    let summary: TaskSummary
+/// A total drawn as blocks: full blocks for whole units, the last one filled from
+/// the bottom by the remaining fraction. Wraps to as many rows as it needs.
+private struct HourBlocks: View {
+    /// Total in blocks, e.g. 6.75.
+    let value: Double
+    let color: Color
     @ObservedObject var theme: ThemeManager
-    let onShowTasks: () -> Void
 
-    @State private var pendingAssignment: TaskItem?
-
-    private let s: CGFloat = 1.2
+    private let size: CGFloat = 10
+    private let spacing: CGFloat = 3
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(summary.title)
-                    .font(theme.currentFont.font(size: 15, weight: .semibold))
-                    .foregroundColor(theme.colors.text)
-                    .italic(summary.isUntagged)
-                    .lineLimit(2)
-                Spacer()
-                if summary.isDone {
-                    SectionHeader(title: "Done", theme: theme, scale: s)
-                }
-            }
+        let full = Int(value)
+        let remainder = value - Double(full)
+        let count = full + (remainder >= 0.02 ? 1 : 0)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.durationText(summary.totalSeconds))
-                    .font(theme.currentFont.font(size: 30, weight: .bold, design: .rounded))
-                    .foregroundColor(theme.colors.text)
-                    .contentTransition(.numericText())
-                Text("total focus · \(viewModel.shareText(summary)) of all focus")
-                    .font(theme.currentFont.font(size: 10.5, weight: .medium))
-                    .foregroundColor(theme.colors.textSecondary)
-            }
-
-            statsGrid
-
-            if summary.isUntagged {
-                untaggedNote
-            }
-
-            progressChart
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardBackground(theme, radius: 10)
-        .alert(
-            "Assign to “\(pendingAssignment?.title ?? "")”?",
-            isPresented: Binding(get: { pendingAssignment != nil }, set: { if !$0 { pendingAssignment = nil } })
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: size, maximum: size), spacing: spacing)],
+            alignment: .leading,
+            spacing: spacing
         ) {
-            Button("Cancel", role: .cancel) { }
-            Button("Assign") {
-                if let task = pendingAssignment {
-                    viewModel.assignUntagged(to: task.id)
-                }
+            if count == 0 {
+                RoundedRectangle(cornerRadius: 2.5)
+                    .stroke(theme.colors.ringTrack, lineWidth: 1)
+                    .frame(width: size, height: size)
             }
-        } message: {
-            Text("All \(summary.sessions) focus sessions without a task (\(viewModel.durationText(summary.totalSeconds))) will count toward it. Single sessions can be moved back from the session list (right click).")
-        }
-    }
-
-    private var statsGrid: some View {
-        let items: [(label: String, value: String)] = [
-            ("Sessions", "\(summary.sessions)"),
-            ("Avg session", viewModel.durationText(summary.averageSeconds)),
-            ("Longest", viewModel.durationText(summary.longestSeconds)),
-            ("Active days", "\(summary.activeDays)"),
-            ("First worked", viewModel.firstWorkedText(summary)),
-            ("Last worked", viewModel.lastWorkedText(summary))
-        ]
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .leading), count: 3), alignment: .leading, spacing: 10) {
-            ForEach(items, id: \.label) { item in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(item.value)
-                        .font(theme.currentFont.font(size: 12 * s, weight: .bold, design: .rounded))
-                        .foregroundColor(theme.colors.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text(item.label.uppercased())
-                        .font(theme.currentFont.font(size: 7 * s, weight: .medium))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .tracking(0.5)
-                        .lineLimit(1)
+            ForEach(0..<count, id: \.self) { index in
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(theme.colors.ringTrack)
+                    Rectangle()
+                        .fill(color)
+                        .frame(height: size * (index < full ? 1 : remainder))
                 }
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: 2.5))
             }
         }
     }
+}
 
-    // MARK: Untagged
+// MARK: - Session Task Menu
 
-    private var untaggedNote: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Focus recorded without a task, such as sessions from before tasks existed. Assign it to a task to count toward that task.")
-                .font(theme.currentFont.font(size: 10.5))
-                .foregroundColor(theme.colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+/// Context menu section moving one focus session to another task, or off any task.
+/// Done tasks and tasks sharing a title show their creation day.
+struct SessionTaskMenu: View {
+    let session: StatsSessionItem
+    let tasks: [TaskItem]
+    let menuTitle: (TaskItem) -> String
+    let onAssign: (StatsSessionItem, UUID?) -> Void
 
-            if viewModel.hasTasks {
-                Menu {
-                    ForEach(viewModel.tasks) { task in
-                        Button(task.isDone ? "\(task.title) (done)" : task.title) {
-                            pendingAssignment = task
-                        }
-                    }
-                } label: {
-                    assignLabel("Assign all to a task…")
+    var body: some View {
+        if session.isFocus && !tasks.isEmpty {
+            Menu("Task") {
+                item("No Task", isOn: session.taskID == nil) { onAssign(session, nil) }
+                Divider()
+                ForEach(tasks) { task in
+                    item(menuTitle(task), isOn: session.taskID == task.id) { onAssign(session, task.id) }
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .hoverEffect()
+            }
+        }
+    }
+
+    private func item(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if isOn {
+                Label(title, systemImage: "checkmark")
             } else {
-                Button(action: onShowTasks) {
-                    assignLabel("Create a task first")
-                }
-                .buttonStyle(.plain)
-                .hoverEffect()
-            }
-        }
-    }
-
-    private func assignLabel(_ text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.right.circle")
-                .font(theme.currentFont.font(size: 11, weight: .medium))
-            Text(text)
-                .font(theme.currentFont.font(size: 11, weight: .semibold))
-        }
-        .foregroundColor(theme.colors.accent)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(theme.colors.accent.opacity(0.12))
-        .clipShape(Capsule())
-        .contentShape(Capsule())
-    }
-
-    // MARK: Running Total
-
-    private var progressChart: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Running total", theme: theme, scale: s)
-            if viewModel.progress.count < 2 {
-                Text("No sessions yet")
-                    .font(theme.currentFont.font(size: 10, weight: .medium))
-                    .foregroundColor(theme.colors.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            } else {
-                Chart(viewModel.progress) { point in
-                    AreaMark(
-                        x: .value("Date", point.date),
-                        y: .value("Hours", Double(point.totalSeconds) / 3600)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [theme.colors.accent.opacity(0.28), theme.colors.accent.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    LineMark(
-                        x: .value("Date", point.date),
-                        y: .value("Hours", Double(point.totalSeconds) / 3600)
-                    )
-                    .foregroundStyle(theme.colors.accent)
-                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
-                        AxisGridLine().foregroundStyle(theme.colors.ringTrack)
-                        AxisValueLabel {
-                            if let hours = value.as(Double.self) {
-                                Text(hours < 1 && hours > 0 ? "\(Int(hours * 60))m" : "\(Int(hours))h")
-                                    .font(theme.currentFont.font(size: 8 * s))
-                                    .foregroundColor(theme.colors.textSecondary)
-                            }
-                        }
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                            .font(theme.currentFont.font(size: 8 * s))
-                            .foregroundStyle(theme.colors.textSecondary)
-                    }
-                }
-                .frame(height: 130)
+                Text(title)
             }
         }
     }

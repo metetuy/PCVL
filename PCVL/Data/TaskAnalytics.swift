@@ -4,8 +4,11 @@ import Foundation
 
 /// A focus session reduced to what task totals need.
 struct TaskSessionItem {
+    /// The record's `persistentModelID` (any unique value in tests).
+    let id: AnyHashable
     let date: Date
     let duration: Int
+    let type: SessionType
     /// nil when the session counted toward no task.
     let taskID: UUID?
 }
@@ -17,7 +20,8 @@ struct TaskSessionItem {
 struct TaskSummary: Identifiable, Equatable {
     let taskID: UUID?
     let title: String
-    let isDone: Bool
+    let createdAt: Date?
+    let completedAt: Date?
     let totalSeconds: Int
     let sessions: Int
     let longestSeconds: Int
@@ -31,14 +35,8 @@ struct TaskSummary: Identifiable, Equatable {
 
     var id: String { taskID?.uuidString ?? Self.untaggedID }
     var isUntagged: Bool { taskID == nil }
+    var isDone: Bool { completedAt != nil }
     var averageSeconds: Int { sessions > 0 ? totalSeconds / sessions : 0 }
-}
-
-/// The running total of a task after one of its sessions.
-struct TaskProgressPoint: Identifiable, Equatable {
-    let id: Int
-    let date: Date
-    let totalSeconds: Int
 }
 
 // MARK: - Task Analyzer
@@ -48,50 +46,58 @@ struct TaskProgressPoint: Identifiable, Equatable {
 struct TaskAnalyzer {
     var calendar = Calendar.current
 
-    /// Every task (ordered by total focus, most first; tasks without sessions keep
-    /// their order after them), then the focus time without a task, if any.
+    /// Hours one block stands for, so the largest total fits in `maxBlocks`.
+    static let blockUnits = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000]
+
+    /// Open tasks (most focus first, then the ones not started), then done tasks
+    /// (most recently finished first), then the focus time without a task, if any.
     func summaries(tasks: [TaskItem], sessions: [TaskSessionItem]) -> [TaskSummary] {
         let byTask = Dictionary(grouping: sessions, by: \.taskID)
         let allFocus = sessions.reduce(0) { $0 + $1.duration }
 
-        let taskSummaries = tasks.map { task in
-            summary(taskID: task.id, title: task.title, isDone: task.isDone, sessions: byTask[task.id] ?? [], allFocus: allFocus)
+        let all = tasks.map { task in
+            summary(
+                taskID: task.id,
+                title: task.title,
+                createdAt: task.createdAt,
+                completedAt: task.completedAt,
+                sessions: byTask[task.id] ?? [],
+                allFocus: allFocus
+            )
         }
-        let worked = taskSummaries.filter { $0.sessions > 0 }.sorted { $0.totalSeconds > $1.totalSeconds }
-        let unworked = taskSummaries.filter { $0.sessions == 0 }
+        let open = all.filter { !$0.isDone }
+        let started = open.filter { $0.sessions > 0 }.sorted { $0.totalSeconds > $1.totalSeconds }
+        let notStarted = open.filter { $0.sessions == 0 }
+        let done = all.filter(\.isDone).sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
 
-        var result = worked + unworked
+        var result = started + notStarted + done
         if let untagged = byTask[nil], !untagged.isEmpty {
-            result.append(summary(taskID: nil, title: "No task", isDone: false, sessions: untagged, allFocus: allFocus))
+            result.append(summary(taskID: nil, title: "No task", createdAt: nil, completedAt: nil, sessions: untagged, allFocus: allFocus))
         }
         return result
     }
 
-    /// Running total after each session of `taskID` (nil = no task), in order,
-    /// starting from zero at the first session's start.
-    func progress(for taskID: UUID?, sessions: [TaskSessionItem]) -> [TaskProgressPoint] {
-        let own = sessions.filter { $0.taskID == taskID }.sorted { $0.date < $1.date }
-        guard let first = own.first else { return [] }
-        var total = 0
-        var points = [TaskProgressPoint(id: 0, date: first.date, totalSeconds: 0)]
-        for (index, session) in own.enumerated() {
-            total += session.duration
-            points.append(TaskProgressPoint(
-                id: index + 1,
-                date: session.date.addingTimeInterval(TimeInterval(session.duration)),
-                totalSeconds: total
-            ))
-        }
-        return points
+    /// The smallest unit (in hours) at which `maxSeconds` fits in `maxBlocks` blocks.
+    static func blockUnitHours(maxSeconds: Int, maxBlocks: Int = 60) -> Int {
+        let hours = Double(maxSeconds) / 3600
+        return blockUnits.first { hours / Double($0) <= Double(maxBlocks) } ?? blockUnits.last!
     }
 
-    private func summary(taskID: UUID?, title: String, isDone: Bool, sessions: [TaskSessionItem], allFocus: Int) -> TaskSummary {
+    private func summary(
+        taskID: UUID?,
+        title: String,
+        createdAt: Date?,
+        completedAt: Date?,
+        sessions: [TaskSessionItem],
+        allFocus: Int
+    ) -> TaskSummary {
         let total = sessions.reduce(0) { $0 + $1.duration }
         let dates = sessions.map(\.date)
         return TaskSummary(
             taskID: taskID,
             title: title,
-            isDone: isDone,
+            createdAt: createdAt,
+            completedAt: completedAt,
             totalSeconds: total,
             sessions: sessions.count,
             longestSeconds: sessions.map(\.duration).max() ?? 0,

@@ -200,7 +200,9 @@ extension StatisticsManager {
             sortBy: [SortDescriptor(\.date)]
         )
         let sessions = (try? modelContext.fetch(descriptor)) ?? []
-        return sessions.map { TaskSessionItem(date: $0.date, duration: $0.duration, taskID: $0.task?.id) }
+        return sessions.map {
+            TaskSessionItem(id: $0.persistentModelID, date: $0.date, duration: $0.duration, type: $0.sessionType, taskID: $0.task?.id)
+        }
     }
 
     /// Links one focus session to a task, or with nil removes its task.

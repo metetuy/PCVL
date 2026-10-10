@@ -20,7 +20,7 @@ struct TaskPicker: View {
             Picker("Current task", selection: selection) {
                 Text("No Task").tag(UUID?.none)
                 ForEach(viewModel.openTasks) { task in
-                    Text(task.title).tag(UUID?.some(task.id))
+                    Text(viewModel.menuTitle(for: task)).tag(UUID?.some(task.id))
                 }
             }
             .pickerStyle(.inline)
@@ -302,11 +302,18 @@ struct TaskRow: View {
         if isCurrent {
             LiveTaskTotals(task: task, viewModel: timerViewModel, theme: theme, scale: scale, isCompact: isCompact)
         } else {
-            Text(TasksViewModel.totalsText(seconds: task.focusSeconds, sessions: task.sessions, compact: isCompact))
+            Text(totalsText)
                 .font(theme.currentFont.font(size: 9 * scale, weight: isCompact ? .medium : .regular))
                 .foregroundColor(theme.colors.textSecondary)
                 .lineLimit(1)
         }
+    }
+
+    /// Done tasks add when they were created and finished (full rows only).
+    private var totalsText: String {
+        let totals = TasksViewModel.totalsText(seconds: task.focusSeconds, sessions: task.sessions, compact: isCompact)
+        guard task.isDone && !isCompact else { return totals }
+        return "\(totals) · \(TasksViewModel.datesText(created: task.createdAt, completed: task.completedAt))"
     }
 
     private func startEditing() {

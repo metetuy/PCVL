@@ -89,6 +89,30 @@ final class TasksViewModel: ObservableObject {
         return "\(durationText(seconds)) · \(sessions) session\(sessions == 1 ? "" : "s")"
     }
 
+    /// When a done task was created and finished, e.g. "Created Oct 3 · Done Oct 9",
+    /// so tasks with the same title stay apart.
+    static func datesText(created: Date, completed: Date?) -> String {
+        let createdText = "Created \(StatsFormat.dayText(created))"
+        guard let completed else { return createdText }
+        return "\(createdText) · Done \(StatsFormat.dayText(completed))"
+    }
+
+    /// A task's title in menus: done tasks, and tasks whose title another task
+    /// shares, get their creation day so the entries can be told apart.
+    static func menuTitle(for task: TaskItem, among tasks: [TaskItem]) -> String {
+        let isShared = tasks.contains { $0.id != task.id && $0.title == task.title }
+        let created = StatsFormat.dayText(task.createdAt)
+        if task.isDone {
+            return "\(task.title) (done · created \(created))"
+        }
+        return isShared ? "\(task.title) (created \(created))" : task.title
+    }
+
+    /// Menu title among every task (open and done).
+    func menuTitle(for task: TaskItem) -> String {
+        Self.menuTitle(for: task, among: openTasks + doneTasks)
+    }
+
     static func durationText(_ seconds: Int) -> String {
         StatsFormat.hoursMinutes(seconds)
     }

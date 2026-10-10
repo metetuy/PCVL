@@ -108,7 +108,7 @@ final class StatusItemMenu: NSObject {
         none.isEnabled = !tasks.isSelectionLocked
         submenu.addItem(none)
         for task in tasks.openTasks {
-            let entry = item(task.title, action: #selector(setTask(_:)), isOn: task.id == tasks.activeTaskID)
+            let entry = item(tasks.menuTitle(for: task), action: #selector(setTask(_:)), isOn: task.id == tasks.activeTaskID)
             entry.representedObject = task.id
             entry.isEnabled = !tasks.isSelectionLocked
             submenu.addItem(entry)

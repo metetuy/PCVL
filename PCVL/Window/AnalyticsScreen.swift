@@ -28,7 +28,7 @@ struct AnalyticsScreen: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
-                    TaskAnalyticsSection(viewModel: tasks, theme: theme, isWide: wide, onShowTasks: onShowTasks)
+                    TaskAnalyticsSection(viewModel: tasks, theme: theme, onShowTasks: onShowTasks)
 
                     Divider()
                         .background(theme.colors.ringTrack)
@@ -86,6 +86,7 @@ struct AnalyticsScreen: View {
             sessions: snapshot.sessions,
             tasks: tasks.tasks,
             taskTitle: tasks.title(for:),
+            menuTitle: tasks.menuTitle(for:),
             onAssign: tasks.assign(_:to:),
             theme: theme,
             scale: s
@@ -443,6 +444,7 @@ private struct SessionsCard: View {
     /// Tasks a focus session can be moved to (right click on a row).
     let tasks: [TaskItem]
     let taskTitle: (UUID?) -> String?
+    let menuTitle: (TaskItem) -> String
     let onAssign: (StatsSessionItem, UUID?) -> Void
     @ObservedObject var theme: ThemeManager
     var scale: CGFloat = 1
@@ -472,9 +474,7 @@ private struct SessionsCard: View {
                         ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
                             SessionRow(session: session, theme: theme, scale: scale, taskTitle: taskTitle(session.taskID))
                                 .contextMenu {
-                                    if session.isFocus && !tasks.isEmpty {
-                                        taskMenu(for: session)
-                                    }
+                                    SessionTaskMenu(session: session, tasks: tasks, menuTitle: menuTitle, onAssign: onAssign)
                                 }
                             if index < sessions.count - 1 {
                                 Divider().background(theme.colors.ringTrack)
@@ -488,27 +488,5 @@ private struct SessionsCard: View {
         .padding(14)
         .frame(maxHeight: .infinity, alignment: .top)
         .cardBackground(theme, radius: 10)
-    }
-
-    /// Moves one focus session to another task, or off any task.
-    @ViewBuilder
-    private func taskMenu(for session: StatsSessionItem) -> some View {
-        Menu("Task") {
-            menuItem("No Task", isOn: session.taskID == nil) { onAssign(session, nil) }
-            Divider()
-            ForEach(tasks) { task in
-                menuItem(task.title, isOn: session.taskID == task.id) { onAssign(session, task.id) }
-            }
-        }
-    }
-
-    private func menuItem(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            if isOn {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
     }
 }

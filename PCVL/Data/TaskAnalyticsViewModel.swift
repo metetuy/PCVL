@@ -4,17 +4,20 @@ import SwiftData
 
 // MARK: - Task Analytics View Model
 
-/// The tasks part of the analytics window: all-time totals per task, the selected
-/// task's details and running total, and assigning sessions to tasks. Like
-/// `AnalyticsViewModel` it only recomputes while the analytics screen is shown.
+/// The tasks part of the analytics window: a card per task with its all-time total
+/// drawn as hour blocks, the sessions behind the selected card, and assigning
+/// sessions to tasks. Like `AnalyticsViewModel` it only recomputes while the
+/// analytics screen is shown.
 @MainActor
 final class TaskAnalyticsViewModel: ObservableObject {
     @Published private(set) var summaries: [TaskSummary] = []
     @Published private(set) var selectedID: String?
-    @Published private(set) var progress: [TaskProgressPoint] = []
     /// Every task (open first, then done), to assign sessions to.
     @Published private(set) var tasks: [TaskItem] = []
+    @Published private(set) var activeTaskID: UUID?
     @Published private(set) var totalFocusSeconds = 0
+    /// Hours one block stands for, shared by every card so they compare at a glance.
+    @Published private(set) var blockUnitHours = 1
 
     /// Set by the window controller while the analytics screen is visible.
     var isActive = false {
@@ -41,13 +44,14 @@ final class TaskAnalyticsViewModel: ObservableObject {
     func refresh() {
         let allTasks = taskManager.tasks()
         tasks = allTasks.filter { !$0.isDone } + allTasks.filter(\.isDone)
+        activeTaskID = taskManager.activeTaskID
         sessions = statsManager.focusSessionItems()
         summaries = analyzer.summaries(tasks: allTasks, sessions: sessions)
         totalFocusSeconds = sessions.reduce(0) { $0 + $1.duration }
-        if selectedID == nil || !summaries.contains(where: { $0.id == selectedID }) {
-            selectedID = summaries.first(where: { $0.sessions > 0 })?.id ?? summaries.first?.id
+        blockUnitHours = TaskAnalyzer.blockUnitHours(maxSeconds: summaries.map(\.totalSeconds).max() ?? 0)
+        if let selectedID, !summaries.contains(where: { $0.id == selectedID }) {
+            self.selectedID = nil
         }
-        updateProgress()
         isStale = false
     }
 
@@ -59,34 +63,41 @@ final class TaskAnalyticsViewModel: ObservableObject {
         }
     }
 
-    private func updateProgress() {
-        progress = selected.map { analyzer.progress(for: $0.taskID, sessions: sessions) } ?? []
-    }
-
     // MARK: - Selection
 
     var selected: TaskSummary? {
         summaries.first { $0.id == selectedID }
     }
 
-    func select(_ id: String) {
-        guard id != selectedID else { return }
-        selectedID = id
-        updateProgress()
+    /// Selecting the selected card again closes its sessions.
+    func toggleSelection(_ id: String) {
+        selectedID = selectedID == id ? nil : id
     }
 
-    /// The bar length of a task in the list, relative to the largest entry.
-    func barFraction(_ summary: TaskSummary) -> Double {
-        let largest = summaries.map(\.totalSeconds).max() ?? 0
-        return largest > 0 ? Double(summary.totalSeconds) / Double(largest) : 0
+    /// The sessions behind the selected card, newest first.
+    var selectedSessions: [StatsSessionItem] {
+        guard let selected else { return [] }
+        return sessions
+            .filter { $0.taskID == selected.taskID }
+            .reversed()
+            .map { StatsSessionItem(id: $0.id, date: $0.date, duration: $0.duration, type: $0.type, taskID: $0.taskID) }
     }
+
+    // MARK: - Totals
 
     var untagged: TaskSummary? { summaries.first(where: \.isUntagged) }
     var hasTasks: Bool { !tasks.isEmpty }
+    var untaggedSeconds: Int { untagged?.totalSeconds ?? 0 }
+    var taggedSeconds: Int { totalFocusSeconds - untaggedSeconds }
 
-    func title(for taskID: UUID?) -> String? {
-        guard let taskID else { return nil }
-        return tasks.first { $0.id == taskID }?.title
+    /// A card's total in blocks of `blockUnitHours`; the fraction is the last,
+    /// partly filled block.
+    func blocks(for summary: TaskSummary) -> Double {
+        Double(summary.totalSeconds) / 3600 / Double(blockUnitHours)
+    }
+
+    var blockLegend: String {
+        blockUnitHours == 1 ? "1 block = 1 hour" : "1 block = \(blockUnitHours) hours"
     }
 
     // MARK: - Assigning
@@ -106,15 +117,42 @@ final class TaskAnalyticsViewModel: ObservableObject {
 
     // MARK: - Display
 
+    func title(for taskID: UUID?) -> String? {
+        guard let taskID else { return nil }
+        return tasks.first { $0.id == taskID }?.title
+    }
+
+    func menuTitle(for task: TaskItem) -> String {
+        TasksViewModel.menuTitle(for: task, among: tasks)
+    }
+
     func durationText(_ seconds: Int) -> String { StatsFormat.hoursMinutes(seconds) }
 
     func shareText(_ summary: TaskSummary) -> String { StatsFormat.percentText(summary.share) }
 
-    func lastWorkedText(_ summary: TaskSummary) -> String {
-        summary.lastDate.map(StatsFormat.sessionDate) ?? "—"
+    /// The card's footer: when the task was created and finished or last worked on.
+    func datesText(for summary: TaskSummary) -> String {
+        if summary.isUntagged {
+            guard let first = summary.firstDate, let last = summary.lastDate else { return "" }
+            return "\(StatsFormat.dayText(first)) – \(StatsFormat.dayText(last))"
+        }
+        guard let created = summary.createdAt else { return "" }
+        if summary.isDone {
+            return TasksViewModel.datesText(created: created, completed: summary.completedAt)
+        }
+        let createdText = "Created \(StatsFormat.dayText(created))"
+        guard let last = summary.lastDate else { return createdText }
+        return "\(createdText) · Last \(StatsFormat.sessionDate(last))"
     }
 
-    func firstWorkedText(_ summary: TaskSummary) -> String {
-        summary.firstDate.map(StatsFormat.shortDate) ?? "—"
+    func detailText(for summary: TaskSummary) -> String {
+        guard summary.sessions > 0 else { return "No sessions yet" }
+        return [
+            "\(summary.sessions) session\(summary.sessions == 1 ? "" : "s")",
+            "avg \(durationText(summary.averageSeconds))",
+            "longest \(durationText(summary.longestSeconds))",
+            "\(summary.activeDays) active day\(summary.activeDays == 1 ? "" : "s")",
+            "\(shareText(summary)) of all focus"
+        ].joined(separator: " · ")
     }
 }
