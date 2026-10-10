@@ -27,7 +27,7 @@ final class TaskAnalyticsViewModel: ObservableObject {
     }
 
     private var isStale = true
-    private var sessions: [TaskSessionItem] = []
+    private var sessions: [StatsSessionItem] = []
     private let statsManager: StatisticsManager
     private let taskManager: TaskManager
     private let analyzer = TaskAnalyzer()
@@ -77,10 +77,7 @@ final class TaskAnalyticsViewModel: ObservableObject {
     /// The sessions behind the selected card, newest first.
     var selectedSessions: [StatsSessionItem] {
         guard let selected else { return [] }
-        return sessions
-            .filter { $0.taskID == selected.taskID }
-            .reversed()
-            .map { StatsSessionItem(id: $0.id, date: $0.date, duration: $0.duration, type: $0.type, taskID: $0.taskID) }
+        return sessions.filter { $0.taskID == selected.taskID }.reversed()
     }
 
     // MARK: - Totals
@@ -126,10 +123,6 @@ final class TaskAnalyticsViewModel: ObservableObject {
         TasksViewModel.menuTitle(for: task, among: tasks)
     }
 
-    func durationText(_ seconds: Int) -> String { StatsFormat.hoursMinutes(seconds) }
-
-    func shareText(_ summary: TaskSummary) -> String { StatsFormat.percentText(summary.share) }
-
     /// The card's footer: when the task was created and finished or last worked on.
     func datesText(for summary: TaskSummary) -> String {
         if summary.isUntagged {
@@ -137,22 +130,19 @@ final class TaskAnalyticsViewModel: ObservableObject {
             return "\(StatsFormat.dayText(first)) – \(StatsFormat.dayText(last))"
         }
         guard let created = summary.createdAt else { return "" }
-        if summary.isDone {
-            return TasksViewModel.datesText(created: created, completed: summary.completedAt)
-        }
-        let createdText = "Created \(StatsFormat.dayText(created))"
-        guard let last = summary.lastDate else { return createdText }
-        return "\(createdText) · Last \(StatsFormat.sessionDate(last))"
+        let dates = TasksViewModel.datesText(created: created, completed: summary.completedAt)
+        guard !summary.isDone, let last = summary.lastDate else { return dates }
+        return "\(dates) · Last \(StatsFormat.sessionDate(last))"
     }
 
     func detailText(for summary: TaskSummary) -> String {
         guard summary.sessions > 0 else { return "No sessions yet" }
         return [
-            "\(summary.sessions) session\(summary.sessions == 1 ? "" : "s")",
-            "avg \(durationText(summary.averageSeconds))",
-            "longest \(durationText(summary.longestSeconds))",
+            StatsFormat.sessionCount(summary.sessions),
+            "avg \(StatsFormat.hoursMinutes(summary.averageSeconds))",
+            "longest \(StatsFormat.hoursMinutes(summary.longestSeconds))",
             "\(summary.activeDays) active day\(summary.activeDays == 1 ? "" : "s")",
-            "\(shareText(summary)) of all focus"
+            "\(StatsFormat.percentText(summary.share)) of all focus"
         ].joined(separator: " · ")
     }
 }

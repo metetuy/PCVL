@@ -99,7 +99,7 @@ struct StatsSessionItem: Identifiable {
     /// The task the session counted toward, if any.
     var taskID: UUID? = nil
 
-    var isFocus: Bool { type != .shortBreak }
+    var isFocus: Bool { type.isFocus }
 }
 
 /// One bar in the main chart (an hour, day, month or year).

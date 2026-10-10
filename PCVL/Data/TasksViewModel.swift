@@ -85,8 +85,8 @@ final class TasksViewModel: ObservableObject {
     /// gives only the time, e.g. "1h 20m", or "—".
     static func totalsText(seconds: Int, sessions: Int, compact: Bool = false) -> String {
         guard sessions > 0 || seconds > 0 else { return compact ? "—" : "No sessions yet" }
-        if compact { return durationText(seconds) }
-        return "\(durationText(seconds)) · \(sessions) session\(sessions == 1 ? "" : "s")"
+        if compact { return StatsFormat.hoursMinutes(seconds) }
+        return "\(StatsFormat.hoursMinutes(seconds)) · \(StatsFormat.sessionCount(sessions))"
     }
 
     /// When a done task was created and finished, e.g. "Created Oct 3 · Done Oct 9",
@@ -111,9 +111,5 @@ final class TasksViewModel: ObservableObject {
     /// Menu title among every task (open and done).
     func menuTitle(for task: TaskItem) -> String {
         Self.menuTitle(for: task, among: openTasks + doneTasks)
-    }
-
-    static func durationText(_ seconds: Int) -> String {
-        StatsFormat.hoursMinutes(seconds)
     }
 }

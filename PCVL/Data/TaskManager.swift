@@ -23,6 +23,8 @@ final class FocusTask {
         self.title = title
         self.createdAt = createdAt
     }
+
+    var isDone: Bool { completedAt != nil }
 }
 
 // MARK: - Task Item
@@ -67,7 +69,7 @@ final class TaskManager {
         modelContext = statsManager.modelContainer.mainContext
         self.defaults = defaults
         let stored = defaults.string(forKey: Self.activeTaskKey).flatMap(UUID.init)
-        if let stored, let task = modelContext.focusTask(id: stored), task.completedAt == nil {
+        if let stored, let task = modelContext.focusTask(id: stored), !task.isDone {
             activeTaskID = stored
         } else {
             defaults.removeObject(forKey: Self.activeTaskKey)
@@ -81,7 +83,7 @@ final class TaskManager {
         let descriptor = FetchDescriptor<FocusTask>(sortBy: [SortDescriptor(\.createdAt)])
         let tasks = (try? modelContext.fetch(descriptor)) ?? []
         return tasks.map { task in
-            let focus = task.sessions.filter { $0.sessionType != .shortBreak }
+            let focus = task.sessions.filter { $0.sessionType.isFocus }
             return TaskItem(
                 id: task.id,
                 title: task.title,
@@ -95,11 +97,16 @@ final class TaskManager {
 
     // MARK: - Current Task
 
+    /// Done tasks cannot become current.
     func setActiveTask(_ id: UUID?) {
-        if let id, modelContext.focusTask(id: id)?.completedAt != nil { return }
+        if let id, modelContext.focusTask(id: id)?.isDone == true { return }
+        storeActiveTask(id)
+        didChange.send()
+    }
+
+    private func storeActiveTask(_ id: UUID?) {
         activeTaskID = id
         defaults.set(id?.uuidString, forKey: Self.activeTaskKey)
-        didChange.send()
     }
 
     // MARK: - Edit
@@ -127,7 +134,7 @@ final class TaskManager {
         guard let task = modelContext.focusTask(id: id) else { return }
         task.completedAt = done ? date : nil
         if done && activeTaskID == id {
-            setActiveTask(nil)
+            storeActiveTask(nil)
         }
         save()
     }
@@ -136,7 +143,7 @@ final class TaskManager {
         guard let task = modelContext.focusTask(id: id) else { return }
         modelContext.delete(task)
         if activeTaskID == id {
-            setActiveTask(nil)
+            storeActiveTask(nil)
         }
         save()
     }

@@ -54,7 +54,7 @@ struct TaskAnalyticsSection: View {
             }
         } message: {
             let untagged = viewModel.untagged
-            Text("All \(untagged?.sessions ?? 0) focus sessions without a task (\(viewModel.durationText(untagged?.totalSeconds ?? 0))) will count toward it. Single sessions can be moved back with a right click on them.")
+            Text("All \(untagged?.sessions ?? 0) focus sessions without a task (\(StatsFormat.hoursMinutes(untagged?.totalSeconds ?? 0))) will count toward it. Single sessions can be moved back with a right click on them.")
         }
     }
 
@@ -90,12 +90,12 @@ struct TaskAnalyticsSection: View {
     }
 
     private var summaryLine: String {
-        var parts = ["\(viewModel.durationText(viewModel.totalFocusSeconds)) of focus"]
+        var parts = ["\(StatsFormat.hoursMinutes(viewModel.totalFocusSeconds)) of focus"]
         if viewModel.taggedSeconds > 0 {
-            parts.append("\(viewModel.durationText(viewModel.taggedSeconds)) on tasks")
+            parts.append("\(StatsFormat.hoursMinutes(viewModel.taggedSeconds)) on tasks")
         }
         if viewModel.untaggedSeconds > 0 {
-            parts.append("\(viewModel.durationText(viewModel.untaggedSeconds)) without a task")
+            parts.append("\(StatsFormat.hoursMinutes(viewModel.untaggedSeconds)) without a task")
         }
         return parts.joined(separator: " · ")
     }
@@ -257,12 +257,12 @@ private struct TaskCard: View {
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Text(summary.sessions > 0 ? viewModel.durationText(summary.totalSeconds) : "—")
+                Text(summary.sessions > 0 ? StatsFormat.hoursMinutes(summary.totalSeconds) : "—")
                     .font(theme.currentFont.font(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(theme.colors.text)
                     .contentTransition(.numericText())
                 Spacer()
-                Text("\(summary.sessions) session\(summary.sessions == 1 ? "" : "s")")
+                Text(StatsFormat.sessionCount(summary.sessions))
                     .font(theme.currentFont.font(size: 10, weight: .medium))
                     .foregroundColor(theme.colors.textSecondary)
             }

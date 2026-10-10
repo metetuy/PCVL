@@ -395,7 +395,6 @@ struct TaskRow: View {
     }
 
     private func startEditing() {
-        draftTitle = task.title
         isEditing = true
     }
 

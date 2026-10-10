@@ -53,12 +53,12 @@ class TimerViewModel: ObservableObject {
     }
 
     private var timer: Timer?
-    private var sessionStartDate: Date?
+    /// The session in progress: when it started and the task it counts toward. Both
+    /// are captured at the start, so changing the current task never re-assigns time
+    /// that already ran.
+    private var currentSession: (start: Date, taskID: UUID?)?
     private var statisticsManager: StatisticsManager?
     private var taskManager: TaskManager?
-    /// The task the session in progress counts toward, captured when it starts, so
-    /// changing the current task never re-assigns time that already ran.
-    private(set) var sessionTaskID: UUID?
     /// Wall clock, replaceable in tests.
     private let now: () -> Date
     var menuBarUpdater: ((String, Bool) -> Void)?
@@ -148,6 +148,9 @@ class TimerViewModel: ObservableObject {
         return currentPhase
     }
 
+    /// The task the session in progress counts toward.
+    var sessionTaskID: UUID? { currentSession?.taskID }
+
     /// A focus or stopwatch session is running or paused. The current task is locked
     /// meanwhile; breaks and finished phases leave it free for the next session.
     var isFocusSessionInProgress: Bool {
@@ -195,8 +198,7 @@ class TimerViewModel: ObservableObject {
     func start() {
         let date = now()
         if isIdle {
-            sessionStartDate = date
-            sessionTaskID = isBreak ? nil : taskManager?.activeTaskID
+            currentSession = (date, isBreak ? nil : taskManager?.activeTaskID)
         }
         engine.start(at: date)
         startTimer()
@@ -240,8 +242,7 @@ class TimerViewModel: ObservableObject {
     private func endSession() {
         engine.tick(at: now())
         recordSessionIfNeeded()
-        sessionStartDate = nil
-        sessionTaskID = nil
+        currentSession = nil
         stopTimer()
         engine.reset()
     }
@@ -278,7 +279,7 @@ class TimerViewModel: ObservableObject {
     }
 
     private func recordSessionIfNeeded() {
-        guard engine.elapsedSeconds > 0, let startDate = sessionStartDate else { return }
+        guard engine.elapsedSeconds > 0, let session = currentSession else { return }
         let type: SessionType
         switch engine.mode {
         case .countDown: type = isBreak ? .shortBreak : .work
@@ -286,12 +287,11 @@ class TimerViewModel: ObservableObject {
         }
         statisticsManager?.recordSession(
             duration: engine.elapsedSeconds,
-            date: startDate,
+            date: session.start,
             type: type,
-            taskID: sessionTaskID
+            taskID: session.taskID
         )
-        sessionStartDate = nil
-        sessionTaskID = nil
+        currentSession = nil
     }
 
     private func requestNotificationPermission() {

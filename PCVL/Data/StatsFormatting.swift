@@ -153,6 +153,11 @@ enum StatsFormat {
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
+    /// "1 session" / "3 sessions".
+    static func sessionCount(_ count: Int) -> String {
+        "\(count) session\(count == 1 ? "" : "s")"
+    }
+
     /// Exact session length, e.g. "1h 5m", "24m 10s" or "45s".
     static func sessionDuration(_ seconds: Int) -> String {
         let h = seconds / 3600

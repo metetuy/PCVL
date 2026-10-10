@@ -74,7 +74,7 @@ PCVL/
 │   ├── TaskManager.swift          (SwiftData FocusTask, TaskItem, current task)
 │   ├── TasksViewModel.swift       (task state for all surfaces)
 │   ├── StatsAnalytics.swift       (StatsRange, StatsTimeUnit, StatsSnapshot, StatsAnalyzer)
-│   ├── TaskAnalytics.swift        (TaskSessionItem, TaskSummary, TaskAnalyzer)
+│   ├── TaskAnalytics.swift        (TaskSummary, TaskAnalyzer — sessions are `StatsSessionItem`)
 │   ├── TaskAnalyticsViewModel.swift(analytics tasks section state + assigning)
 │   ├── StatsFormatting.swift      (StatsFormat display strings)
 │   ├── AnalyticsViewModel.swift   (window analytics state)

@@ -9,6 +9,9 @@ enum SessionType: String, Codable {
     case work
     case shortBreak = "break"
     case stopwatch
+
+    /// Everything but a break counts as focus time (and can belong to a task).
+    var isFocus: Bool { self != .shortBreak }
 }
 
 // MARK: - Session Record
@@ -29,6 +32,11 @@ class SessionRecord {
 
     var sessionType: SessionType {
         SessionType(rawValue: type) ?? .work
+    }
+
+    /// Value copy for aggregation and lists.
+    var item: StatsSessionItem {
+        StatsSessionItem(id: persistentModelID, date: date, duration: duration, type: sessionType, taskID: task?.id)
     }
 }
 
@@ -99,11 +107,11 @@ final class StatisticsManager {
     func recordSession(duration: Int, date: Date, type: SessionType, taskID: UUID? = nil) {
         let record = SessionRecord(duration: duration, date: date, type: type)
         modelContext.insert(record)
-        if type != .shortBreak, let taskID {
+        if type.isFocus, let taskID {
             record.task = modelContext.focusTask(id: taskID)
         }
         try? modelContext.save()
-        if type != .shortBreak {
+        if type.isFocus {
             focusDayCache?.insert(Calendar.current.startOfDay(for: date))
         }
         didChange.send()
@@ -167,15 +175,7 @@ final class StatisticsManager {
             from: fetchStart.addingTimeInterval(-StatsAnalyzer.spilloverLookback),
             to: period.end
         )
-        .map {
-            StatsSessionItem(
-                id: $0.persistentModelID,
-                date: $0.date,
-                duration: $0.duration,
-                type: $0.sessionType,
-                taskID: $0.task?.id
-            )
-        }
+        .map(\.item)
         return analyzer.snapshot(
             range: range,
             offset: offset,
@@ -193,22 +193,20 @@ extension StatisticsManager {
     /// Every focus session with its task, for all-time task totals. Unlike the
     /// period snapshots nothing is split by hour or day: a task's time is simply
     /// the sum of its sessions.
-    func focusSessionItems() -> [TaskSessionItem] {
+    func focusSessionItems() -> [StatsSessionItem] {
         let shortBreak = SessionType.shortBreak.rawValue
         let descriptor = FetchDescriptor<SessionRecord>(
             predicate: #Predicate { $0.type != shortBreak },
             sortBy: [SortDescriptor(\.date)]
         )
         let sessions = (try? modelContext.fetch(descriptor)) ?? []
-        return sessions.map {
-            TaskSessionItem(id: $0.persistentModelID, date: $0.date, duration: $0.duration, type: $0.sessionType, taskID: $0.task?.id)
-        }
+        return sessions.map(\.item)
     }
 
     /// Links one focus session to a task, or with nil removes its task.
     func assignSession(_ id: PersistentIdentifier, toTask taskID: UUID?) {
         guard let session: SessionRecord = modelContext.registeredModel(for: id),
-              session.sessionType != .shortBreak else { return }
+              session.sessionType.isFocus else { return }
         session.task = taskID.flatMap { modelContext.focusTask(id: $0) }
         try? modelContext.save()
         didChange.send()

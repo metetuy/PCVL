@@ -1,18 +1,5 @@
 import Foundation
 
-// MARK: - Task Session Item
-
-/// A focus session reduced to what task totals need.
-struct TaskSessionItem {
-    /// The record's `persistentModelID` (any unique value in tests).
-    let id: AnyHashable
-    let date: Date
-    let duration: Int
-    let type: SessionType
-    /// nil when the session counted toward no task.
-    let taskID: UUID?
-}
-
 // MARK: - Task Summary
 
 /// All-time totals of one task, or (with a nil `taskID`) of the focus time that
@@ -51,30 +38,22 @@ struct TaskAnalyzer {
 
     /// Open tasks (most focus first, then the ones not started), then done tasks
     /// (most recently finished first), then the focus time without a task, if any.
-    func summaries(tasks: [TaskItem], sessions: [TaskSessionItem]) -> [TaskSummary] {
+    func summaries(tasks: [TaskItem], sessions: [StatsSessionItem]) -> [TaskSummary] {
         let byTask = Dictionary(grouping: sessions, by: \.taskID)
         let allFocus = sessions.reduce(0) { $0 + $1.duration }
-
-        let all = tasks.map { task in
-            summary(
-                taskID: task.id,
-                title: task.title,
-                createdAt: task.createdAt,
-                completedAt: task.completedAt,
-                sessions: byTask[task.id] ?? [],
-                allFocus: allFocus
-            )
+        func summary(of task: TaskItem?) -> TaskSummary {
+            makeSummary(of: task, sessions: byTask[task?.id] ?? [], allFocus: allFocus)
         }
-        let open = all.filter { !$0.isDone }
+
+        let open = tasks.filter { !$0.isDone }.map(summary(of:))
         let started = open.filter { $0.sessions > 0 }.sorted { $0.totalSeconds > $1.totalSeconds }
         let notStarted = open.filter { $0.sessions == 0 }
-        let done = all.filter(\.isDone).sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        let done = tasks.filter(\.isDone)
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            .map(summary(of:))
 
-        var result = started + notStarted + done
-        if let untagged = byTask[nil], !untagged.isEmpty {
-            result.append(summary(taskID: nil, title: "No task", createdAt: nil, completedAt: nil, sessions: untagged, allFocus: allFocus))
-        }
-        return result
+        let untagged = byTask[nil] ?? []
+        return started + notStarted + done + (untagged.isEmpty ? [] : [summary(of: nil)])
     }
 
     /// The smallest unit (in hours) at which `maxSeconds` fits in `maxBlocks` blocks.
@@ -83,21 +62,15 @@ struct TaskAnalyzer {
         return blockUnits.first { hours / Double($0) <= Double(maxBlocks) } ?? blockUnits.last!
     }
 
-    private func summary(
-        taskID: UUID?,
-        title: String,
-        createdAt: Date?,
-        completedAt: Date?,
-        sessions: [TaskSessionItem],
-        allFocus: Int
-    ) -> TaskSummary {
+    /// `task` nil summarizes the focus time without a task.
+    private func makeSummary(of task: TaskItem?, sessions: [StatsSessionItem], allFocus: Int) -> TaskSummary {
         let total = sessions.reduce(0) { $0 + $1.duration }
         let dates = sessions.map(\.date)
         return TaskSummary(
-            taskID: taskID,
-            title: title,
-            createdAt: createdAt,
-            completedAt: completedAt,
+            taskID: task?.id,
+            title: task?.title ?? "No task",
+            createdAt: task?.createdAt,
+            completedAt: task?.completedAt,
             totalSeconds: total,
             sessions: sessions.count,
             longestSeconds: sessions.map(\.duration).max() ?? 0,

@@ -14,8 +14,8 @@ struct TaskAnalyzerTests {
         TaskItem(id: id, title: title, createdAt: start, completedAt: done ? start : nil, focusSeconds: 0, sessions: 0)
     }
 
-    private func session(_ taskID: UUID?, hoursFromStart: Double, minutes: Int) -> TaskSessionItem {
-        TaskSessionItem(
+    private func session(_ taskID: UUID?, hoursFromStart: Double, minutes: Int) -> StatsSessionItem {
+        StatsSessionItem(
             id: UUID(),
             date: start.addingTimeInterval(hoursFromStart * 3600),
             duration: minutes * 60,
@@ -28,7 +28,7 @@ struct TaskAnalyzerTests {
         [task(idle, "Idle"), task(refactor, "Refactor", done: true), task(report, "Report")]
     }
 
-    private var sessions: [TaskSessionItem] {
+    private var sessions: [StatsSessionItem] {
         [
             session(report, hoursFromStart: 0, minutes: 50),
             // Crosses midnight and an hour boundary: still one plain 3h block.

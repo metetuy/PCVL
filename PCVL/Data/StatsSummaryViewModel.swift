@@ -42,12 +42,8 @@ final class StatsSummaryViewModel: ObservableObject {
 
     /// One-line summary for the focus screen footer, including the session in progress.
     func todaySummaryText(inProgressSeconds: Int) -> String {
-        let seconds = todayFocusSeconds + inProgressSeconds
-        let h = seconds / 3600
-        let m = (seconds % 3600) / 60
-        let focus = h > 0 ? "\(h)h \(m)m" : "\(m)m"
-        let sessions = todaySessions
-        return "Today \(focus) · \(sessions) session\(sessions == 1 ? "" : "s") · \(streak)-day streak"
+        let focus = StatsFormat.hoursMinutes(todayFocusSeconds + inProgressSeconds)
+        return "Today \(focus) · \(StatsFormat.sessionCount(todaySessions)) · \(streak)-day streak"
     }
 
     func axisLabel(for date: Date) -> String {
