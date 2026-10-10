@@ -2,13 +2,21 @@ import SwiftUI
 import CoreText
 import Combine
 
+/// The menu bar panel. Borderless windows refuse key status by default, which would
+/// leave text fields (adding or renaming a task) unable to take typing.
+final class KeyablePanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var panelWindow: NSPanel!
+    private var panelWindow: KeyablePanel!
     private let viewModel = TimerViewModel()
     private let themeManager = ThemeManager()
     private let statsManager = StatisticsManager()
     private lazy var settings = AppSettings(statsManager: statsManager)
+    private lazy var taskManager = TaskManager(statsManager: statsManager)
+    private lazy var tasksViewModel = TasksViewModel(taskManager: taskManager, statsManager: statsManager, timer: viewModel)
     private lazy var statsSummary = StatsSummaryViewModel(statsManager: statsManager, settings: settings)
     private lazy var analyticsViewModel = AnalyticsViewModel(statsManager: statsManager, settings: settings)
     private lazy var windowController = MainWindowController(
@@ -16,6 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         themeManager: themeManager,
         settings: settings,
         statsSummary: statsSummary,
+        tasksViewModel: tasksViewModel,
         analyticsViewModel: analyticsViewModel,
         onSwitchedToPanel: { [weak self] in self?.showPanelAfterWindowMode() }
     )
@@ -24,9 +33,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         timer: viewModel,
         themeManager: themeManager,
         settings: settings,
+        tasks: tasksViewModel,
         isWindowOpen: { [weak self] in self?.windowController.isOpen ?? false },
         onOpenWindow: { [weak self] in self?.openWindow() },
-        onSwitchToPanel: { [weak self] in self?.windowController.switchToPanel() }
+        onSwitchToPanel: { [weak self] in self?.windowController.switchToPanel() },
+        onShowTasks: { [weak self] in self?.openWindow(section: .tasks) }
     )
     private var settingsObservers = Set<AnyCancellable>()
 
@@ -50,6 +61,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         viewModel.setStatisticsManager(statsManager)
+        viewModel.setTaskManager(taskManager)
         viewModel.menuBarUpdater = { [weak self] time, isRunning in
             self?.updateMenuBar(time: time, isRunning: isRunning)
         }
@@ -59,6 +71,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             themeManager: themeManager,
             settings: settings,
             statsSummary: statsSummary,
+            tasks: tasksViewModel,
             onExpand: { [weak self] tab in self?.enterWindowMode(section: WindowSection(tab)) },
             onShowThemePicker: { [weak self] anchorRect in
                 guard let self else { return }
@@ -66,7 +79,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        panelWindow = NSPanel(
+        panelWindow = KeyablePanel(
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 190),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -146,7 +159,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         positionWindowNearStatusItem()
         // Bring the app to foreground first so the panel is presented above active app windows.
         NSApp.activate(ignoringOtherApps: true)
-        panelWindow.orderFront(nil)
+        // Key (without activating anything else) so the tasks tab's text fields take typing.
+        panelWindow.makeKeyAndOrderFront(nil)
         updateEventMonitors()
     }
 
@@ -239,11 +253,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = nil
     }
 
-    private func openWindow() {
+    /// Without a section, an open window keeps the one it shows.
+    private func openWindow(section: WindowSection? = nil) {
         if windowController.isOpen {
-            windowController.bringToFront()
+            if let section {
+                windowController.show(section: section)
+            } else {
+                windowController.bringToFront()
+            }
         } else {
-            enterWindowMode(section: .focus)
+            enterWindowMode(section: section ?? .focus)
         }
     }
 

@@ -13,6 +13,7 @@ struct MainWindowView: View {
     @ObservedObject var theme: ThemeManager
     let settings: AppSettings
     let summary: StatsSummaryViewModel
+    let tasks: TasksViewModel
     let analytics: AnalyticsViewModel
     let onToggleFullScreen: () -> Void
     let onSwitchToPanel: () -> Void
@@ -65,7 +66,13 @@ struct MainWindowView: View {
     private var screen: some View {
         switch state.section {
         case .focus:
-            FocusScreen(viewModel: timerViewModel, theme: theme, summary: summary)
+            FocusScreen(viewModel: timerViewModel, theme: theme, summary: summary, tasks: tasks) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    state.section = .tasks
+                }
+            }
+        case .tasks:
+            TasksScreen(viewModel: tasks, timerViewModel: timerViewModel, theme: theme)
         case .analytics:
             AnalyticsScreen(viewModel: analytics, theme: theme)
         case .settings:

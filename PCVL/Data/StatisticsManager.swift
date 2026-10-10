@@ -18,6 +18,8 @@ class SessionRecord {
     var duration: Int
     var date: Date
     var type: String
+    /// The task this focus session counted toward; nil for breaks and untagged sessions.
+    var task: FocusTask?
 
     init(duration: Int, date: Date, type: SessionType) {
         self.duration = duration
@@ -49,7 +51,7 @@ final class StatisticsManager {
 
     /// `inMemory` keeps records out of the user's store (used by tests).
     init(inMemory: Bool = false) {
-        let schema = Schema([SessionRecord.self])
+        let schema = Schema([SessionRecord.self, FocusTask.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
         do {
             modelContainer = try ModelContainer(for: schema, configurations: [config])
@@ -80,7 +82,11 @@ final class StatisticsManager {
 
     func deleteAllSessions() {
         do {
-            try modelContext.delete(model: SessionRecord.self)
+            // One by one, not a batch delete: a batch bypasses the context, so tasks
+            // already loaded would keep listing the deleted sessions.
+            for session in allSessions() {
+                modelContext.delete(session)
+            }
             try modelContext.save()
         } catch {
             print("Failed to delete all sessions: \(error)")
@@ -89,8 +95,13 @@ final class StatisticsManager {
         didChange.send()
     }
 
-    func recordSession(duration: Int, date: Date, type: SessionType) {
-        modelContext.insert(SessionRecord(duration: duration, date: date, type: type))
+    /// Records a session; focus sessions are linked to `taskID` when it names a task.
+    func recordSession(duration: Int, date: Date, type: SessionType, taskID: UUID? = nil) {
+        let record = SessionRecord(duration: duration, date: date, type: type)
+        modelContext.insert(record)
+        if type != .shortBreak, let taskID {
+            record.task = modelContext.focusTask(id: taskID)
+        }
         try? modelContext.save()
         if type != .shortBreak {
             focusDayCache?.insert(Calendar.current.startOfDay(for: date))
@@ -171,15 +182,16 @@ final class StatisticsManager {
 // MARK: - Export
 
 extension StatisticsManager {
-    /// One exported session: `{ duration, type, created_at }` with an ISO8601
+    /// One exported session: `{ duration, type, created_at, task? }` with an ISO8601
     /// timestamp, so the file can be re-imported or processed elsewhere.
     private struct ExportedSession: Encodable {
         let duration: Int
         let type: String
         let createdAt: String
+        let task: String?
 
         enum CodingKeys: String, CodingKey {
-            case duration, type
+            case duration, type, task
             case createdAt = "created_at"
         }
     }
@@ -189,7 +201,12 @@ extension StatisticsManager {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let sessions = allSessions().map {
-            ExportedSession(duration: $0.duration, type: $0.type, createdAt: formatter.string(from: $0.date))
+            ExportedSession(
+                duration: $0.duration,
+                type: $0.type,
+                createdAt: formatter.string(from: $0.date),
+                task: $0.task?.title
+            )
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

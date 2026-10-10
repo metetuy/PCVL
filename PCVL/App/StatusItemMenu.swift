@@ -10,25 +10,31 @@ final class StatusItemMenu: NSObject {
     private let timer: TimerViewModel
     private let themeManager: ThemeManager
     private let settings: AppSettings
+    private let tasks: TasksViewModel
     /// Whether window mode is active (the window is open or minimized).
     private let isWindowOpen: () -> Bool
     private let onOpenWindow: () -> Void
     private let onSwitchToPanel: () -> Void
+    private let onShowTasks: () -> Void
 
     init(
         timer: TimerViewModel,
         themeManager: ThemeManager,
         settings: AppSettings,
+        tasks: TasksViewModel,
         isWindowOpen: @escaping () -> Bool,
         onOpenWindow: @escaping () -> Void,
-        onSwitchToPanel: @escaping () -> Void
+        onSwitchToPanel: @escaping () -> Void,
+        onShowTasks: @escaping () -> Void
     ) {
         self.timer = timer
         self.themeManager = themeManager
         self.settings = settings
+        self.tasks = tasks
         self.isWindowOpen = isWindowOpen
         self.onOpenWindow = onOpenWindow
         self.onSwitchToPanel = onSwitchToPanel
+        self.onShowTasks = onShowTasks
     }
 
     func makeMenu() -> NSMenu {
@@ -42,6 +48,7 @@ final class StatusItemMenu: NSObject {
         }
 
         menu.addItem(.separator())
+        menu.addItem(taskItem())
         menu.addItem(durationItem("Work", .work))
         menu.addItem(durationItem("Break", .breakTime))
 
@@ -91,6 +98,27 @@ final class StatusItemMenu: NSObject {
         return parent
     }
 
+    /// Open tasks to pick the current one from. Locked (like in the picker) while a
+    /// focus session is in progress.
+    private func taskItem() -> NSMenuItem {
+        let parent = NSMenuItem(title: "Task: \(tasks.activeTask?.title ?? "None")", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        let none = item("No Task", action: #selector(setTask(_:)), isOn: tasks.activeTaskID == nil)
+        none.isEnabled = !tasks.isSelectionLocked
+        submenu.addItem(none)
+        for task in tasks.openTasks {
+            let entry = item(task.title, action: #selector(setTask(_:)), isOn: task.id == tasks.activeTaskID)
+            entry.representedObject = task.id
+            entry.isEnabled = !tasks.isSelectionLocked
+            submenu.addItem(entry)
+        }
+        submenu.addItem(.separator())
+        submenu.addItem(item("Manage Tasks…", action: #selector(showTasks)))
+        parent.submenu = submenu
+        return parent
+    }
+
     private func submenuItem<Option: Equatable>(
         _ title: String,
         options: [Option],
@@ -119,6 +147,12 @@ final class StatusItemMenu: NSObject {
     @objc private func openWindow() { onOpenWindow() }
 
     @objc private func switchToPanel() { onSwitchToPanel() }
+
+    @objc private func showTasks() { onShowTasks() }
+
+    @objc private func setTask(_ sender: NSMenuItem) {
+        tasks.select(sender.representedObject as? UUID)
+    }
 
     @objc private func setDuration(_ sender: NSMenuItem) {
         guard let choice = sender.representedObject as? DurationChoice else { return }

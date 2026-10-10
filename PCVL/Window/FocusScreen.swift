@@ -8,6 +8,8 @@ struct FocusScreen: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
     @ObservedObject var summary: StatsSummaryViewModel
+    let tasks: TasksViewModel
+    let onShowTasks: () -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -20,6 +22,9 @@ struct FocusScreen: View {
                     .padding(.top, 16)
 
                 Spacer()
+
+                TaskPicker(viewModel: tasks, theme: theme, scale: 1.4, onManageTasks: onShowTasks)
+                    .padding(.bottom, 14)
 
                 Text(viewModel.modeLabel)
                     .font(theme.currentFont.font(size: 9 * scale, weight: .semibold))

@@ -4,6 +4,7 @@ import SwiftUI
 
 enum AppTab: CaseIterable {
     case timer
+    case tasks
     case stats
     case settings
 }
@@ -16,6 +17,7 @@ struct PopoverView: View {
     @ObservedObject var themeManager: ThemeManager
     let settings: AppSettings
     let statsSummary: StatsSummaryViewModel
+    let tasks: TasksViewModel
     /// Opens the full window on the section matching the given tab.
     var onExpand: (AppTab) -> Void
     var onShowThemePicker: (CGRect) -> Void
@@ -33,7 +35,13 @@ struct PopoverView: View {
             ZStack {
                 switch selectedTab {
                 case .timer:
-                    TimerView(viewModel: viewModel, theme: themeManager)
+                    TimerView(viewModel: viewModel, theme: themeManager, tasks: tasks) {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedTab = .tasks
+                        }
+                    }
+                case .tasks:
+                    TasksView(viewModel: tasks, timerViewModel: viewModel, theme: themeManager)
                 case .stats:
                     StatsView(viewModel: statsSummary, theme: themeManager)
                 case .settings:
@@ -77,6 +85,7 @@ struct PopoverView: View {
     private var tabBar: some View {
         HStack(spacing: 0) {
             tabButton(tab: .timer, icon: "timer")
+            tabButton(tab: .tasks, icon: "checklist")
             tabButton(tab: .stats, icon: "chart.bar")
             tabButton(tab: .settings, icon: "gear")
         }

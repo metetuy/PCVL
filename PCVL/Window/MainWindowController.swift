@@ -6,6 +6,7 @@ import Combine
 
 enum WindowSection: String, CaseIterable, Identifiable {
     case focus
+    case tasks
     case analytics
     case settings
 
@@ -14,6 +15,7 @@ enum WindowSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .focus: return "Focus"
+        case .tasks: return "Tasks"
         case .analytics: return "Analytics"
         case .settings: return "Settings"
         }
@@ -22,6 +24,7 @@ enum WindowSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .focus: return "timer"
+        case .tasks: return "checklist"
         case .analytics: return "chart.bar"
         case .settings: return "gear"
         }
@@ -31,6 +34,7 @@ enum WindowSection: String, CaseIterable, Identifiable {
     init(_ tab: AppTab) {
         switch tab {
         case .timer: self = .focus
+        case .tasks: self = .tasks
         case .stats: self = .analytics
         case .settings: self = .settings
         }
@@ -87,6 +91,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let themeManager: ThemeManager
     private let settings: AppSettings
     private let statsSummary: StatsSummaryViewModel
+    private let tasksViewModel: TasksViewModel
     let analyticsViewModel: AnalyticsViewModel
     /// Called once the window has closed because the user switched to the panel.
     private let onSwitchedToPanel: () -> Void
@@ -104,6 +109,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         themeManager: ThemeManager,
         settings: AppSettings,
         statsSummary: StatsSummaryViewModel,
+        tasksViewModel: TasksViewModel,
         analyticsViewModel: AnalyticsViewModel,
         onSwitchedToPanel: @escaping () -> Void
     ) {
@@ -111,6 +117,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         self.themeManager = themeManager
         self.settings = settings
         self.statsSummary = statsSummary
+        self.tasksViewModel = tasksViewModel
         self.analyticsViewModel = analyticsViewModel
         self.onSwitchedToPanel = onSwitchedToPanel
         super.init()
@@ -248,6 +255,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             theme: themeManager,
             settings: settings,
             summary: statsSummary,
+            tasks: tasksViewModel,
             analytics: analyticsViewModel,
             onToggleFullScreen: { [weak self] in self?.toggleFullScreen() },
             onSwitchToPanel: { [weak self] in self?.switchToPanel() },

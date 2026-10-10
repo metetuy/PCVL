@@ -7,17 +7,24 @@ import SwiftUI
 struct TimerView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
+    @ObservedObject var tasks: TasksViewModel
+    let onManageTasks: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top row: mode toggle + label
-            HStack {
+            // Top row: mode toggle + current task (once there are tasks) + label
+            HStack(spacing: 6) {
                 TimerModeToggle(viewModel: viewModel, theme: theme)
-                Spacer()
+                    .fixedSize()
+                Spacer(minLength: 4)
+                if tasks.hasTasks {
+                    TaskPicker(viewModel: tasks, theme: theme, maxTitleWidth: 42, onManageTasks: onManageTasks)
+                }
                 Text(viewModel.modeLabel)
                     .font(theme.currentFont.font(size: 8, weight: .semibold))
                     .tracking(1.5)
                     .foregroundColor(theme.colors.textSecondary)
+                    .fixedSize()
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)

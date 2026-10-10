@@ -4,7 +4,7 @@
 macOS menu bar popup app built with Swift and SwiftUI.
 No Dock icon (LSUIElement = YES). Popup appears on menu bar click (NSPanel, not NSPopover).
 The panel stays concise; "Expand for details" opens an optional resizable desktop window
-(Focus / Analytics / Settings) that supports native full screen.
+(Focus / Tasks / Analytics / Settings) that supports native full screen.
 
 ## Tech stack
 - Swift 5.9+
@@ -15,7 +15,7 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 - No external dependencies
 
 ## App architecture
-- **AppDelegate**: NSStatusItem + NSPanel setup, outside-click monitors, font registration, menu bar icon updates, panel ↔ window transitions, observes `AppSettings` (always on top, timer in menu bar)
+- **AppDelegate**: NSStatusItem + NSPanel (`KeyablePanel`, can become key so text fields take typing) setup, outside-click monitors, font registration, menu bar icon updates, panel ↔ window transitions, observes `AppSettings` (always on top, timer in menu bar)
 - **AppSettings**: ObservableObject owning the shared preferences (always on top, timer in menu bar, stats time unit) and the shared actions (reset statistics with confirmation, export, quit). The panel's settings tab, the window's settings screen and the context menu all bind to it
 - **StatusItemMenu**: Builds the right-click context menu and handles its actions through the same models
 - **ThemeFlyoutController**: The theme picker panel that pops out beside the main panel
@@ -26,6 +26,8 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 - **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches, cached focus days for streaks; `didChange` fires after every save and when the day rolls over (also on wake / time zone change)
 - **StatsAnalyzer**: Pure aggregation (periods, buckets, streaks, distributions) — no side effects
 - **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit; only recomputes while active (set by MainWindowController), otherwise marks itself stale
+- **TaskManager**: SwiftData CRUD for `FocusTask` (same container as sessions) and the current task (`activeTaskID`, persisted); clears it when that task is checked off or deleted
+- **TasksViewModel**: ObservableObject for every task surface (tasks screen, task picker, context menu) — open/done lists with totals, current task, `isSelectionLocked` while a focus session is in progress
 - **StatsSummaryViewModel**: Today + this week, shared by the panel's stats tab and the focus screen footer — the single source for "today"
 - **SwipeMonitor** (in PopoverView): NSEvent monitor for horizontal trackpad swipe to switch tabs
 
@@ -41,19 +43,22 @@ PCVL/
 ├── Window/                        (optional desktop window, one file per screen)
 │   ├── MainWindowController.swift (NSWindow setup + delegate, WindowSection, WindowState)
 │   ├── MainWindowView.swift       (collapsible sidebar, top bar: sidebar / full screen / panel)
-│   ├── FocusScreen.swift          (clean, scalable timer)
+│   ├── FocusScreen.swift          (clean, scalable timer + task picker)
+│   ├── TasksScreen.swift          (add, pick current, check off, rename, delete; totals per task)
 │   ├── AnalyticsScreen.swift      (raw data first: totals, chart + sessions, distributions, insights last)
 │   └── SettingsScreen.swift       (durations, theme previews, font, panel behavior, data)
 ├── Views/                         (menu bar panel, 300x190)
 │   ├── PopoverView.swift          (tab shell: timer/stats/settings + swipe navigation)
 │   ├── ExpandHandle.swift         (hover "Expand for details" → opens the window)
-│   ├── TimerView.swift            (compact timer)
+│   ├── TimerView.swift            (compact timer + task chip)
+│   ├── TasksView.swift            (open tasks: add, pick current, check off)
 │   ├── StatsView.swift            (today, this week chart, recent sessions)
 │   ├── SettingsView.swift         (durations, font, theme flyout, window toggles, reset)
 │   ├── ThemeFlyoutView.swift, HoverEffect.swift, SpringButtonStyle.swift
 ├── Components/                    (shared by panel and window)
 │   ├── TimerControls.swift        (mode toggle, control row, primary/circle buttons, progress line, scroll-to-adjust)
 │   ├── SettingsComponents.swift   (reset confirmation alert, duration stepper)
+│   ├── TaskComponents.swift       (TaskPicker chip + menu, TaskList / TaskRow — compact in the panel)
 │   ├── StatsComponents.swift      (cards, session row, segmented control, Swift Charts bar charts)
 │   └── ThemedBackground.swift     (per-theme radial gradient)
 ├── Timer/
@@ -63,6 +68,8 @@ PCVL/
 │   └── ThemeManager.swift         (AppTheme enum + AppFont, `colors(for:)` for previews)
 ├── Data/
 │   ├── StatisticsManager.swift    (SwiftData SessionRecord, range fetches, snapshot(range:offset:))
+│   ├── TaskManager.swift          (SwiftData FocusTask, TaskItem, current task)
+│   ├── TasksViewModel.swift       (task state for all surfaces)
 │   ├── StatsAnalytics.swift       (StatsRange, StatsTimeUnit, StatsSnapshot, StatsAnalyzer)
 │   ├── StatsFormatting.swift      (StatsFormat display strings)
 │   ├── AnalyticsViewModel.swift   (window analytics state)
@@ -70,7 +77,7 @@ PCVL/
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
-├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift
 └── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
 ```
 
@@ -78,6 +85,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 
 ### Panel
 - NSPanel (not NSPopover), borderless, non-activating, floating, fixed 300x190
+- `KeyablePanel` overrides `canBecomeKey` (borderless windows refuse it) and is made key when shown, so the tasks tab's text fields take typing
 - Positioned dynamically below the status bar button
 - "Always on Top" elevates window level to `.statusBar`
 - Auto-close on outside click via global NSEvent monitor (disabled when Always on Top active, regardless of other settings)
@@ -115,6 +123,15 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - Streak = consecutive days with at least one focus session counting backwards from today; longest streak also tracked
 - Charts use Swift Charts (system framework) with hover readouts
 
+### Tasks
+- `FocusTask`: id, title, createdAt, completedAt (nil = open); `SessionRecord.task` is optional, delete rule `.nullify` (deleting a task keeps its sessions as untagged focus time)
+- A task's time is never stored — it is summed from its linked sessions, so it always agrees with the statistics (and reset statistics zeroes it)
+- `TimerViewModel` captures the current task when a focus/stopwatch session starts (`sessionTaskID`); breaks are never linked
+- The current task is locked while a focus session runs or is paused; free during breaks and between sessions
+- The first task added while none is current becomes current; checking off or deleting the current task clears it
+- `deleteAllSessions` deletes records one by one — a batch delete bypasses the context and leaves loaded tasks listing deleted sessions
+- Panel: tasks tab (open tasks only, compact rows, delete/rename via right click); task chip in the timer's top row (only once tasks exist) whose "Manage Tasks…" switches to that tab; context menu: "Task:" submenu. Done tasks are shown in the window only
+
 ### Desktop window
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"
 - Entered from the panel's hover expand handle (matching section) or the context menu; always via `AppDelegate.enterWindowMode`, which closes the panel first
@@ -123,11 +140,11 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - The window alone owns its size (`contentMinSize`, `sizingOptions = []`); no SwiftUI animation inside the full screen delegate callbacks (it makes NSHostingView fight AppKit's resize and crashes with an Update Constraints loop)
 - Full screen is an extension of window mode: entering collapses the sidebar to icons, exiting restores it; closing or switching to the panel exits full screen first
 - Full screen auto-hides the toolbar with the menu bar (`willUseFullScreenPresentationOptions`); otherwise AppKit pins an opaque toolbar strip over the top bar
-- Sidebar: Focus / Analytics / Settings (⌘1–3), live session status; collapsible to icons (windowed preference persisted as `windowSidebarCollapsed`); ⌘W closes
+- Sidebar: Focus / Tasks / Analytics / Settings (⌘1–4), live session status; collapsible to icons (windowed preference persisted as `windowSidebarCollapsed`); ⌘W closes
 - Focus screen: Space starts/pauses, scroll over the time adjusts duration when idle
 
 ### Tab navigation
-- Tabs: timer | stats | settings
+- Tabs: timer | tasks | stats | settings
 - Switchable via tab bar icons or horizontal trackpad swipe (threshold 30px)
 - `SwipeMonitor` uses NSViewRepresentable + local NSEvent monitor
 
@@ -143,6 +160,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - Completion sound ("Funk") + UNUserNotification
 - Always on Top window toggle
 - Reset all statistics with confirmation
+- Tasks: sessions count toward a current task; per-task time and sessions; task in JSON export
 
 ## What NOT to do
 - Do not add a Dock icon; the desktop window is opt-in from the panel, the app stays menu-bar first

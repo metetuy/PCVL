@@ -27,11 +27,17 @@ struct MainWindowTests {
             stats.recordSession(duration: 600 + index * 37 % 4000, date: Date().addingTimeInterval(-Double(index) * 5400), type: type)
         }
         let settings = AppSettings(statsManager: stats)
+        let timer = TimerViewModel()
         let controller = MainWindowController(
-            timerViewModel: TimerViewModel(),
+            timerViewModel: timer,
             themeManager: ThemeManager(),
             settings: settings,
             statsSummary: StatsSummaryViewModel(statsManager: stats, settings: settings),
+            tasksViewModel: TasksViewModel(
+                taskManager: TaskManager(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!),
+                statsManager: stats,
+                timer: timer
+            ),
             analyticsViewModel: AnalyticsViewModel(statsManager: stats, settings: settings),
             onSwitchedToPanel: {}
         )
