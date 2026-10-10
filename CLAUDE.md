@@ -130,7 +130,8 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - The current task is locked while a focus session runs or is paused; free during breaks and between sessions
 - The first task added while none is current becomes current; checking off or deleting the current task clears it
 - `deleteAllSessions` deletes records one by one — a batch delete bypasses the context and leaves loaded tasks listing deleted sessions
-- Panel: tasks tab (open tasks only, compact rows, delete/rename via right click); task chip in the timer's top row (only once tasks exist) whose "Manage Tasks…" switches to that tab; context menu: "Task:" submenu. Done tasks are shown in the window only
+- Rows (shared by panel and window): click = make current, circle = check off; hovering shows rename (pencil) and delete (trash) — in compact panel rows they replace the time; renaming shows save (✓) / cancel (✕), Return / Esc do the same; right click has the same actions
+- Panel: tasks tab (open tasks only, compact rows); task chip in the timer's top row (only once tasks exist) whose "Manage Tasks…" switches to that tab; context menu: "Task:" submenu. Done tasks are shown in the window only
 
 ### Desktop window
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"

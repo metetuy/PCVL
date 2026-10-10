@@ -146,7 +146,14 @@ struct TaskRow: View {
             if isCompact {
                 title
                 Spacer(minLength: 6 * scale)
-                totals
+                // The actions take the time's place while hovered, so nothing shifts.
+                if isEditing {
+                    editActions
+                } else if showsActions {
+                    actions
+                } else {
+                    totals
+                }
             } else {
                 VStack(alignment: .leading, spacing: 3 * scale) {
                     title
@@ -158,16 +165,14 @@ struct TaskRow: View {
                 }
             }
 
-            // Compact rows leave deleting to the context menu.
             if !isCompact {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(theme.currentFont.font(size: 9 * scale))
-                        .foregroundColor(theme.colors.textSecondary)
+                if isEditing {
+                    editActions
+                } else {
+                    actions
+                        .opacity(showsActions ? 1 : 0)
+                        .allowsHitTesting(showsActions)
                 }
-                .buttonStyle(.plain)
-                .opacity(isHovering ? 1 : 0)
-                .help("Delete task (its sessions stay in your statistics)")
             }
         }
         .padding(.horizontal, (isCompact ? 10 : 11.5) * scale)
@@ -175,7 +180,7 @@ struct TaskRow: View {
         .background(isCurrent ? theme.colors.accent.opacity(0.08) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
-            if canSelect && !isCurrent { onSelect() }
+            if canSelect && !isCurrent && !isEditing { onSelect() }
         }
         .onHover { isHovering = $0 }
         .contextMenu {
@@ -188,6 +193,42 @@ struct TaskRow: View {
             Button("Delete", role: .destructive, action: onDelete)
         }
         .help(canSelect && !isCurrent ? "Make this the current task" : "")
+    }
+
+    private var showsActions: Bool { isHovering && !isEditing }
+
+    /// Rename and delete, shown while the row is hovered.
+    private var actions: some View {
+        HStack(spacing: 2 * scale) {
+            actionButton(icon: "pencil", help: "Rename", action: startEditing)
+            actionButton(icon: "trash", help: "Delete task (its sessions stay in your statistics)", action: onDelete)
+        }
+    }
+
+    /// Save and cancel while renaming (Return and Escape do the same).
+    private var editActions: some View {
+        HStack(spacing: 2 * scale) {
+            actionButton(icon: "checkmark", help: "Save (Return)", color: theme.colors.accent, action: commitEditing)
+            actionButton(icon: "xmark", help: "Cancel (Esc)", action: cancelEditing)
+        }
+    }
+
+    private func actionButton(
+        icon: String,
+        help: String,
+        color: Color? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(theme.currentFont.font(size: 9.5 * scale, weight: .medium))
+                .foregroundColor(color ?? theme.colors.textSecondary)
+                .frame(width: 18 * scale, height: 18 * scale)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect()
+        .help(help)
     }
 
     private var currentBadge: some View {
@@ -218,10 +259,20 @@ struct TaskRow: View {
                 .textFieldStyle(.plain)
                 .font(theme.currentFont.font(size: 11 * scale, weight: .medium))
                 .foregroundColor(theme.colors.text)
+                .padding(.horizontal, 5 * scale)
+                .padding(.vertical, 2 * scale)
+                .background(theme.colors.background.opacity(0.6))
+                .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
+                .overlay(RoundedRectangle(cornerRadius: 4 * scale).stroke(theme.colors.accent.opacity(0.5), lineWidth: 1))
+                // Offsets the padding so the text stays where the title was.
+                .padding(.horizontal, -5 * scale)
                 .focused($isTitleFocused)
-                .onAppear { isTitleFocused = true }
+                .onAppear {
+                    draftTitle = task.title
+                    isTitleFocused = true
+                }
                 .onSubmit(commitEditing)
-                .onExitCommand { isEditing = false }
+                .onExitCommand(perform: cancelEditing)
                 .onChange(of: isTitleFocused) { _, focused in
                     if !focused { commitEditing() }
                 }
@@ -250,6 +301,10 @@ struct TaskRow: View {
     private func startEditing() {
         draftTitle = task.title
         isEditing = true
+    }
+
+    private func cancelEditing() {
+        isEditing = false
     }
 
     private func commitEditing() {
