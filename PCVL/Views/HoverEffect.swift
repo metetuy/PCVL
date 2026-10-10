@@ -9,14 +9,10 @@ struct HoverOpacityModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(isHovering ? 0.75 : 1)
-            .onHover { hovering in
-                isHovering = hovering
-                if hovering {
-                    NSCursor.pointingHand.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
+            .onHover { isHovering = $0 }
+            // Unlike NSCursor push/pop, this can't leave the cursor stuck when the
+            // view disappears while hovered.
+            .pointerStyle(.link)
     }
 }
 

@@ -35,14 +35,8 @@ struct ExpandHandle: View {
         .opacity(isPanelHovered || isHovering ? 1 : 0)
         .animation(.easeOut(duration: 0.18), value: isHovering)
         .animation(.easeOut(duration: 0.18), value: isPanelHovered)
-        .onHover { hovering in
-            isHovering = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
+        .onHover { isHovering = $0 }
+        .pointerStyle(.link)
         .help("Open the PCVL window")
     }
 }

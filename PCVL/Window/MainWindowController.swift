@@ -80,13 +80,13 @@ final class WindowState: ObservableObject {
 /// which display it was on) and is created lazily the first time it is opened.
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-    private let state = WindowState()
+    private(set) var window: NSWindow?
+    let state = WindowState()
 
     private let timerViewModel: TimerViewModel
     private let themeManager: ThemeManager
     private let statsManager: StatisticsManager
-    private let analyticsViewModel: AnalyticsViewModel
+    let analyticsViewModel: AnalyticsViewModel
     /// Called once the window has closed because the user switched to the panel.
     private let onSwitchedToPanel: () -> Void
 
@@ -172,16 +172,25 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - NSWindowDelegate
 
+    // No SwiftUI animation here: AppKit animates the full screen transition, and an
+    // animated transaction during its frame changes makes NSHostingView animate the
+    // window size too, fighting AppKit until the window grows without bound.
     func windowWillEnterFullScreen(_ notification: Notification) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            state.setFullScreen(true)
-        }
+        state.setFullScreen(true)
     }
 
     func windowWillExitFullScreen(_ notification: Notification) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            state.setFullScreen(false)
-        }
+        state.setFullScreen(false)
+    }
+
+    /// Full screen hides the (empty) toolbar together with the menu bar, so the
+    /// content fills the screen; otherwise AppKit pins an opaque toolbar strip on
+    /// top. Both slide in when the pointer reaches the top edge.
+    func window(
+        _ window: NSWindow,
+        willUseFullScreenPresentationOptions proposedOptions: NSApplication.PresentationOptions = []
+    ) -> NSApplication.PresentationOptions {
+        proposedOptions.union([.fullScreen, .autoHideToolbar, .autoHideMenuBar])
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
@@ -228,8 +237,11 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             onClose: { [weak self] in self?.close() }
         )
         let hostingView = NSHostingView(rootView: root)
-        // Let the user drive the size; SwiftUI only enforces the minimum.
-        hostingView.sizingOptions = [.minSize]
+        // The window alone owns its size (`contentMinSize` above). Letting SwiftUI
+        // publish its own size constraints feeds back into AppKit's layout while the
+        // full screen transition resizes the window and the sidebar animates, which
+        // grows the window without bound until AppKit throws.
+        hostingView.sizingOptions = []
         window.contentView = hostingView
 
         window.center()

@@ -29,15 +29,6 @@ class SessionRecord {
     var sessionType: SessionType {
         SessionType(rawValue: type) ?? .work
     }
-
-    var durationFormatted: String {
-        let m = duration / 60
-        let s = duration % 60
-        if m > 0 {
-            return "\(m)m \(s)s"
-        }
-        return "\(s)s"
-    }
 }
 
 // MARK: - Statistics Manager
@@ -47,9 +38,10 @@ class StatisticsManager: ObservableObject {
     let modelContainer: ModelContainer
     private var modelContext: ModelContext
 
-    init() {
+    /// `inMemory` keeps records out of the user's store (used by tests).
+    init(inMemory: Bool = false) {
         let schema = Schema([SessionRecord.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
         do {
             modelContainer = try ModelContainer(for: schema, configurations: [config])
             modelContext = modelContainer.mainContext
@@ -148,6 +140,8 @@ class StatisticsManager: ObservableObject {
             from: fetchStart.addingTimeInterval(-StatsAnalyzer.spilloverLookback),
             to: period.end
         )
+        .enumerated()
+        .map { StatsSessionItem(id: $0.offset, date: $0.element.date, duration: $0.element.duration, type: $0.element.sessionType) }
         return analyzer.snapshot(
             range: range,
             offset: offset,

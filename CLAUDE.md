@@ -17,9 +17,9 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 ## App architecture
 - **AppDelegate**: NSStatusItem + NSPanel setup, event monitors, right-click context menu, font registration, menu bar icon updates, panel ↔ window transitions, observes `alwaysOnTop` / `showTimerInMenuBar` defaults
 - **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed
-- **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects
+- **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects; elapsed time is measured against a wall-clock `Date` passed in, so late/throttled ticks never lose time
 - **TimerViewModel**: ObservableObject, drives all timer state, session recording, notifications
-- **ThemeManager**: Color schemes + font management, persisted via @AppStorage
+- **ThemeManager**: Color schemes + font management, `@Published` properties persisted to UserDefaults
 - **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches
 - **StatsAnalyzer**: Pure aggregation (periods, buckets, streaks, distributions) — no side effects
 - **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit
@@ -62,6 +62,9 @@ PCVL/
 │   └── StatsSummaryViewModel.swift(panel stats state)
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
+PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift
+└── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
 ```
 
 ## Key implementation details
@@ -73,7 +76,8 @@ PCVL/
 - Auto-close on outside click via global NSEvent monitor (disabled when Always on Top active)
 
 ### Timer
-- `TimerEngine` is a value type (struct); `TimerViewModel` owns it and fires a 1s `Timer`
+- `TimerEngine` is a value type (struct); `TimerViewModel` owns it and fires a 1s `Timer` that only refreshes the display — time comes from the clock (`TimerViewModel(now:)` is injectable for tests)
+- Skipping or resetting records whatever ran of the current phase (focus, break or stopwatch)
 - Modes: `countDown` (work/break) | `countUp` (stopwatch)
 - States: `idle` | `running` | `paused` | `completed`
 - Duration config: work 5–480 min (default 25), break 1–30 min (default 5)
@@ -107,8 +111,10 @@ PCVL/
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"
 - Entered from the panel's hover expand handle (matching section) or the context menu; always via `AppDelegate.enterWindowMode`, which closes the panel first
 - Titled, resizable, `.fullScreenPrimary`, empty `.unifiedCompact` toolbar (taller title bar), min 720x500, frame autosaved as "PCVLMainWindow"
-- Top bar: sidebar toggle (⌃⌘S) left; full screen toggle (⌃⌘F) and "switch to panel" right
+- Top bar: sidebar toggle (⌃⌘S) left; full screen toggle (⌃⌘F) and "switch to panel" right. It is an overlay drawn into the title bar's safe area; the content itself respects that safe area. Never put a ScrollView under a container that ignores the top safe area — its NSScrollView extends up under the top bar and swallows the clicks
+- The window alone owns its size (`contentMinSize`, `sizingOptions = []`); no SwiftUI animation inside the full screen delegate callbacks (it makes NSHostingView fight AppKit's resize and crashes with an Update Constraints loop)
 - Full screen is an extension of window mode: entering collapses the sidebar to icons, exiting restores it; closing or switching to the panel exits full screen first
+- Full screen auto-hides the toolbar with the menu bar (`willUseFullScreenPresentationOptions`); otherwise AppKit pins an opaque toolbar strip over the top bar
 - Sidebar: Focus / Analytics / Settings (⌘1–3), live session status; collapsible to icons (windowed preference persisted as `windowSidebarCollapsed`); ⌘W closes
 - Focus screen: Space starts/pauses, scroll over the time adjusts duration when idle
 

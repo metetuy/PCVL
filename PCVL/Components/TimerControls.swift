@@ -9,14 +9,8 @@ import AppKit
 private extension View {
     /// Tracks hover into `isHovering` and shows a pointing-hand cursor meanwhile.
     func pointerHover(_ isHovering: Binding<Bool>) -> some View {
-        onHover { hovering in
-            isHovering.wrappedValue = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
-            }
-        }
+        onHover { isHovering.wrappedValue = $0 }
+            .pointerStyle(.link)
     }
 
     /// Raised look shared by the timer buttons: top highlight stroke + hover-lifted shadow.

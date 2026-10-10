@@ -18,28 +18,42 @@ struct MainWindowView: View {
     static let sidebarWidth: CGFloat = 196
     /// Wide enough to clear the traffic-light buttons in windowed mode.
     static let collapsedSidebarWidth: CGFloat = 72
-    /// Matches the compact title bar so the top bar lines up with the traffic lights.
-    static let topBarHeight: CGFloat = 38
+    /// Fallback height for the top bar if the window reports no title bar inset.
+    static let minimumTopBarHeight: CGFloat = 38
+
+    private var sidebarWidth: CGFloat {
+        state.isSidebarCollapsed ? Self.collapsedSidebarWidth : Self.sidebarWidth
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
-                .frame(width: state.isSidebarCollapsed ? Self.collapsedSidebarWidth : Self.sidebarWidth)
+        // The content respects the title bar's safe area and only the top bar is
+        // drawn into it. A screen whose container ignored the safe area would extend
+        // its scroll view (a real NSView) up under the top bar and swallow its clicks.
+        GeometryReader { geo in
+            let titleBarHeight = geo.safeAreaInsets.top
+            let topBarHeight = max(titleBarHeight, Self.minimumTopBarHeight)
 
-            Rectangle()
-                .fill(theme.colors.ringTrack)
-                .frame(width: 0.5)
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: sidebarWidth)
 
-            VStack(spacing: 0) {
-                topBar
-                    .frame(height: Self.topBarHeight)
+                Rectangle()
+                    .fill(theme.colors.ringTrack)
+                    .frame(width: 0.5)
+                    .ignoresSafeArea(edges: .top)
+
                 screen
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .padding(.top, topBarHeight - titleBarHeight)
+            .overlay(alignment: .topLeading) {
+                // Shares the title bar with the traffic lights, vertically centered on them.
+                topBar
+                    .frame(height: topBarHeight)
+                    .padding(.leading, sidebarWidth + 0.5)
+                    .offset(y: -titleBarHeight)
+            }
         }
-        // The top bar sits in the transparent title bar area.
-        .ignoresSafeArea(edges: .top)
-        .frame(minWidth: MainWindowController.minimumSize.width, minHeight: MainWindowController.minimumSize.height)
         .background(ThemedBackground(theme: theme, radius: 900).ignoresSafeArea())
         .background(closeShortcut)
     }
@@ -129,9 +143,7 @@ struct MainWindowView: View {
             }
         }
         .padding(.horizontal, collapsed ? 10 : 12)
-        // Clears the traffic lights (windowed) / keeps the same rhythm (full screen).
-        .padding(.top, Self.topBarHeight + 14)
-        .padding(.bottom, 14)
+        .padding(.vertical, 14)
         .animation(.easeInOut(duration: 0.15), value: timerViewModel.isIdle)
     }
 

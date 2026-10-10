@@ -22,16 +22,6 @@ enum StatsRange: String, CaseIterable, Identifiable {
         }
     }
 
-    var shortLabel: String {
-        switch self {
-        case .day: return "D"
-        case .week: return "W"
-        case .month: return "M"
-        case .year: return "Y"
-        case .all: return "All"
-        }
-    }
-
     /// Label used for the "vs previous period" comparison.
     var previousLabel: String {
         switch self {
@@ -104,7 +94,8 @@ enum StatsTimeUnit: String, CaseIterable, Identifiable {
 
 // MARK: - Snapshot Types
 
-/// Value copy of a `SessionRecord`, safe to keep around after the store changes.
+/// Value copy of a `SessionRecord`, safe to keep around after the store changes;
+/// also the analyzer's input, so aggregation never touches the store.
 struct StatsSessionItem: Identifiable {
     let id: Int
     let date: Date
@@ -190,10 +181,6 @@ struct StatsSnapshot {
         let elapsed = buckets.filter { !$0.isFuture }
         guard !elapsed.isEmpty else { return 0 }
         return elapsed.reduce(0) { $0 + $1.focusSeconds } / elapsed.count
-    }
-
-    var maxBucketSeconds: Int {
-        buckets.map(\.focusSeconds).max() ?? 0
     }
 
     /// Hour of day with the most focus time, if any focus was recorded.
@@ -292,8 +279,8 @@ struct StatsAnalyzer {
         range: StatsRange,
         offset: Int,
         earliest: Date?,
-        sessions: [SessionRecord],
-        previousSessions: [SessionRecord]?,
+        sessions: [StatsSessionItem],
+        previousSessions: [StatsSessionItem]?,
         focusDays: Set<Date>
     ) -> StatsSnapshot {
         let period = interval(for: range, offset: offset, earliest: earliest)
@@ -311,12 +298,12 @@ struct StatsAnalyzer {
         var longest = 0
         var items: [StatsSessionItem] = []
 
-        for (index, session) in sessions.enumerated() {
-            let type = session.sessionType
+        for session in sessions {
+            let type = session.type
 
             // Count and list sessions by the period they started in.
-            if period.contains(session.date) && session.date < period.end {
-                items.append(StatsSessionItem(id: index, date: session.date, duration: session.duration, type: type))
+            if session.date >= period.start && session.date < period.end {
+                items.append(session)
                 if type == .shortBreak {
                     breakCount += 1
                 } else {
@@ -359,7 +346,7 @@ struct StatsAnalyzer {
         if let previousSessions, range.supportsNavigation {
             let previousPeriod = interval(for: range, offset: offset - 1, earliest: earliest)
             var total = 0
-            for session in previousSessions where session.sessionType != .shortBreak {
+            for session in previousSessions where session.isFocus {
                 for piece in hourPieces(of: session) where piece.start >= previousPeriod.start && piece.start < previousPeriod.end {
                     total += piece.seconds
                 }
@@ -463,7 +450,7 @@ struct StatsAnalyzer {
     }
 
     /// Splits a session into chunks that each stay inside one clock hour.
-    private func hourPieces(of session: SessionRecord) -> [(start: Date, seconds: Int)] {
+    private func hourPieces(of session: StatsSessionItem) -> [(start: Date, seconds: Int)] {
         var pieces: [(start: Date, seconds: Int)] = []
         var cursor = session.date
         var remaining = session.duration

@@ -36,6 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let icon = NSImage(named: "MenuBarIcon")
             icon?.size = NSSize(width: 18, height: 18)
             button.image = icon
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
             button.action = #selector(handleStatusItemClick)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -516,17 +517,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateEventMonitors()
     }
 
+    /// Called every tick while running, so it only touches the title.
     func updateMenuBar(time: String, isRunning: Bool) {
         guard let button = statusItem.button else { return }
-
-        let showTimer = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
-
-        let icon = NSImage(named: "MenuBarIcon")
-        icon?.size = NSSize(width: 18, height: 18)
-        button.image = icon
-
-        if showTimer && isRunning {
-            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        if UserDefaults.standard.showTimerInMenuBar && isRunning {
             button.title = "\(time) "
             button.imagePosition = .imageRight
         } else {
