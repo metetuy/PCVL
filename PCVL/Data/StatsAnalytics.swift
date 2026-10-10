@@ -55,6 +55,13 @@ enum StatsTimeUnit: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// UserDefaults key shared by the panel and the analytics window.
+    static let storageKey = "statsTimeUnit"
+
+    static var stored: StatsTimeUnit {
+        StatsTimeUnit(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .minutes
+    }
+
     var symbol: String {
         switch self {
         case .minutes: return "m"

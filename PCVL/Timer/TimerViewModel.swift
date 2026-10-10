@@ -142,6 +142,12 @@ class TimerViewModel: ObservableObject {
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
     }
 
+    /// One-line summary for the focus screen footer.
+    var todaySummaryText: String {
+        let sessions = todayStats.sessions
+        return "Today \(liveTodayFocusText) · \(sessions) session\(sessions == 1 ? "" : "s") · \(todayStats.streak)-day streak"
+    }
+
     /// Duration of the phase that follows the current countdown, for the "up next" hint.
     var nextPhaseLabel: String? {
         guard engine.mode == .countDown else { return nil }
@@ -195,6 +201,36 @@ class TimerViewModel: ObservableObject {
         engine.setTarget(seconds: workDuration)
         sessionStartDate = nil
         updateMenuBarIcon()
+    }
+
+    /// Label for the main button: Start / Pause / Resume, or Skip once a phase completed.
+    var primaryActionLabel: String {
+        switch engine.state {
+        case .completed: return "Skip"
+        case .running: return "Pause"
+        case .paused: return "Resume"
+        case .idle: return "Start"
+        }
+    }
+
+    /// The main button's action, shared by every timer screen.
+    func performPrimaryAction() {
+        switch engine.state {
+        case .completed: skipPhase()
+        case .running: pause()
+        case .paused, .idle: start()
+        }
+    }
+
+    var canSkipPhase: Bool { engine.mode == .countDown && !isIdle }
+
+    /// Jumps to the other countdown phase: focus → break, break → focus.
+    func skipPhase() {
+        if isBreak {
+            skipToWork()
+        } else {
+            skipToBreak()
+        }
     }
 
     // MARK: - Private

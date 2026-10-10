@@ -1,28 +1,5 @@
 import SwiftUI
 
-// MARK: - Visual Effect Background
-
-/// Wraps NSVisualEffectView to give the panel native macOS vibrancy/blur.
-struct VisualEffectBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .hudWindow
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-    var state: NSVisualEffectView.State = .active
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = state
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.state = state
-    }
-}
-
 // MARK: - Tab Enum
 
 enum AppTab: CaseIterable {
@@ -37,25 +14,50 @@ struct PopoverView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var themeManager: ThemeManager
     @ObservedObject var statsManager: StatisticsManager
-    @ObservedObject var statsViewModel: StatsViewModel
-    var onToggleFullscreen: () -> Void
+    @ObservedObject var statsSummary: StatsSummaryViewModel
+    /// Opens the full window on the section matching the given tab.
+    var onExpand: (AppTab) -> Void
     var onShowThemePicker: (CGRect) -> Void
 
     @State private var selectedTab: AppTab = .timer
-    @State private var swipeDelta: CGFloat = 0
-
-    /// Width above which the panel is treated as zoomed to fill the screen.
-    static let expandedWidthThreshold: CGFloat = 520
+    @State private var isHovering = false
 
     var body: some View {
-        GeometryReader { geo in
-            content(isExpanded: geo.size.width > Self.expandedWidthThreshold)
+        VStack(spacing: 0) {
+            // Tab bar
+            tabBar
+            Divider().background(themeManager.colors.ringTrack)
+
+            // Content
+            ZStack {
+                switch selectedTab {
+                case .timer:
+                    TimerView(viewModel: viewModel, theme: themeManager)
+                case .stats:
+                    StatsView(viewModel: statsSummary, theme: themeManager)
+                case .settings:
+                    SettingsView(
+                        viewModel: viewModel,
+                        theme: themeManager,
+                        statsManager: statsManager,
+                        onShowThemePicker: onShowThemePicker
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .overlay(alignment: .bottom) {
+            ExpandHandle(theme: themeManager, isPanelHovered: isHovering) {
+                onExpand(selectedTab)
+            }
+            .padding(.bottom, 4)
         }
         .coordinateSpace(name: "panel")
-        .frame(minWidth: 300, maxWidth: .infinity, minHeight: 190, maxHeight: .infinity)
-        .background(panelGradient)
+        .frame(width: 300, height: 190)
+        .background(ThemedBackground(theme: themeManager))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeManager.colors.text.opacity(0.08), lineWidth: 0.5))
+        .onHover { isHovering = $0 }
         .onAppear {
             SwipeMonitor.shared.onSwipe = { direction in
                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -69,81 +71,26 @@ struct PopoverView: View {
         }
     }
 
-    private func content(isExpanded: Bool) -> some View {
-        VStack(spacing: 0) {
-            // Tab bar
-            tabBar(isExpanded: isExpanded)
-            Divider().background(themeManager.colors.ringTrack)
-
-            // Content
-            ZStack {
-                switch selectedTab {
-                case .timer:
-                    TimerView(
-                        viewModel: viewModel,
-                        theme: themeManager,
-                        isExpanded: isExpanded,
-                        onToggleFullscreen: onToggleFullscreen
-                    )
-                case .stats:
-                    StatsView(
-                        viewModel: statsViewModel,
-                        theme: themeManager,
-                        isExpanded: isExpanded,
-                        onToggleFullscreen: onToggleFullscreen
-                    )
-                case .settings:
-                    SettingsView(
-                        viewModel: viewModel,
-                        theme: themeManager,
-                        statsManager: statsManager,
-                        onShowThemePicker: onShowThemePicker
-                    )
-                    .frame(maxWidth: isExpanded ? 420 : .infinity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    // MARK: - Panel Background
-
-    /// Static per-theme radial gradient — replaces the desktop-dependent blur so the
-    /// panel always renders the same vignette look regardless of what's behind it.
-    private var panelGradient: some View {
-        RadialGradient(
-            colors: [
-                themeManager.colors.background.lightened(by: 0.06),
-                themeManager.colors.background.darkened(by: 0.18)
-            ],
-            center: UnitPoint(x: 0.5, y: 0.35),
-            startRadius: 4,
-            endRadius: 220
-        )
-    }
-
     // MARK: - Tab Bar
 
-    private func tabBar(isExpanded: Bool) -> some View {
+    private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton(tab: .timer, icon: "timer", isExpanded: isExpanded)
-            tabButton(tab: .stats, icon: "chart.bar", isExpanded: isExpanded)
-            tabButton(tab: .settings, icon: "gear", isExpanded: isExpanded)
+            tabButton(tab: .timer, icon: "timer")
+            tabButton(tab: .stats, icon: "chart.bar")
+            tabButton(tab: .settings, icon: "gear")
         }
-        // Keep the icons grouped rather than spread across a screen-wide bar.
-        .frame(maxWidth: isExpanded ? 360 : .infinity)
-        .frame(maxWidth: .infinity, minHeight: isExpanded ? 40 : 32, maxHeight: isExpanded ? 40 : 32)
+        .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32)
         .padding(.horizontal, 8)
     }
 
-    private func tabButton(tab: AppTab, icon: String, isExpanded: Bool) -> some View {
+    private func tabButton(tab: AppTab, icon: String) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.15)) {
                 selectedTab = tab
             }
         } label: {
             Image(systemName: icon)
-                .font(themeManager.currentFont.font(size: isExpanded ? 15 : 12))
+                .font(themeManager.currentFont.font(size: 12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .foregroundColor(
@@ -202,8 +149,10 @@ class SwipeMonitor {
     }
 
     private func handleScroll(_ event: NSEvent) {
+        // Only the panel swipes between tabs; the window scrolls normally.
+        guard event.window is NSPanel else { return }
         // Only handle direct touch-phase events, not momentum
-        guard event.momentumPhase == .init(rawValue: 0) else { return }
+        guard event.momentumPhase.isEmpty else { return }
 
         if event.phase == .began {
             accumulatedDeltaX = 0

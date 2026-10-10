@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreText
+import Combine
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -7,8 +8,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = TimerViewModel()
     private let themeManager = ThemeManager()
     private let statsManager = StatisticsManager()
-    private lazy var statsViewModel = StatsViewModel(statsManager: statsManager)
-    
+    private lazy var statsSummary = StatsSummaryViewModel(statsManager: statsManager)
+    private lazy var analyticsViewModel = AnalyticsViewModel(statsManager: statsManager)
+    private lazy var windowController = MainWindowController(
+        timerViewModel: viewModel,
+        themeManager: themeManager,
+        statsManager: statsManager,
+        analyticsViewModel: analyticsViewModel,
+        onCollapse: { [weak self] in self?.collapseToPanel() }
+    )
+    private var defaultsObservers = Set<AnyCancellable>()
+
     private var globalEventMonitor: Any?
     private var localEventMonitor: Any?
 
@@ -40,8 +50,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel: viewModel,
             themeManager: themeManager,
             statsManager: statsManager,
-            statsViewModel: statsViewModel,
-            onToggleFullscreen: { [weak self] in self?.toggleFullscreen() },
+            statsSummary: statsSummary,
+            onExpand: { [weak self] tab in self?.openWindow(section: WindowSection(tab)) },
             onShowThemePicker: { [weak self] anchorRect in self?.showThemePicker(anchorRect: anchorRect) }
         )
 
@@ -62,13 +72,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow.animationBehavior = .utilityWindow
         panelWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let hostingView = NSHostingView(rootView: contentView)
-        // Only enforce the minimum size; letting SwiftUI's ideal size drive the
-        // window would fight the frame set when zooming to fill the screen.
-        hostingView.sizingOptions = [.minSize]
-        panelWindow.contentView = hostingView
+        panelWindow.contentView = NSHostingView(rootView: contentView)
 
         positionWindowNearStatusItem()
+        observeDefaults()
+    }
+
+    /// The panel, the window's settings and the context menu all just write these
+    /// defaults; reacting here keeps every entry point in sync.
+    private func observeDefaults() {
+        UserDefaults.standard.publisher(for: \.alwaysOnTop)
+            .dropFirst()
+            .removeDuplicates()
+            // Deferred: these change from SwiftUI updates, and mutating the panel
+            // mid-update re-enters AppKit's layout pass.
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in self?.applyAlwaysOnTop(enabled) }
+            .store(in: &defaultsObservers)
+
+        UserDefaults.standard.publisher(for: \.showTimerInMenuBar)
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.viewModel.updateMenuBarIcon()
+                self?.updateEventMonitors()
+            }
+            .store(in: &defaultsObservers)
     }
 
     // MARK: - Status Item Click Handling
@@ -86,13 +116,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if panelWindow.isVisible {
             closePanel()
         } else {
-            positionWindowNearStatusItem()
-            // Bring the app to foreground first so the panel is presented above active app windows.
-            NSApp.activate(ignoringOtherApps: true)
-            panelWindow.orderFront(nil)
-            updateEventMonitors()
+            showPanel()
         }
         viewModel.updateMenuBarIcon()
+    }
+
+    private func showPanel() {
+        positionWindowNearStatusItem()
+        // Bring the app to foreground first so the panel is presented above active app windows.
+        NSApp.activate(ignoringOtherApps: true)
+        panelWindow.orderFront(nil)
+        updateEventMonitors()
+    }
+
+    // MARK: - Window
+
+    /// Panel → window: the panel steps aside and the window opens on the matching section.
+    private func openWindow(section: WindowSection) {
+        // Deferred: invoked from a SwiftUI button action in the panel.
+        DispatchQueue.main.async { [weak self] in
+            self?.closePanel()
+            self?.windowController.show(section: section)
+        }
+    }
+
+    /// Window → panel.
+    private func collapseToPanel() {
+        DispatchQueue.main.async { [weak self] in
+            self?.windowController.close()
+            self?.showPanel()
+            self?.viewModel.updateMenuBarIcon()
+        }
     }
 
     private var shouldPreventAutoClose: Bool {
@@ -153,12 +207,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func closePanel() {
         if panelWindow.isVisible {
-            // Drop the zoom so the panel reopens at its normal size next to the
-            // status item rather than screen-sized.
-            if let restored = preZoomFrame {
-                preZoomFrame = nil
-                panelWindow.setFrame(restored, display: false)
-            }
             panelWindow.orderOut(nil)
             stopEventMonitors()
             hideThemePicker()
@@ -171,9 +219,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shows the theme list in its own borderless panel that pops out beside the
     /// main panel (like a submenu), rather than rendering inline in the popup.
     private func showThemePicker(anchorRect: CGRect) {
-        // Deferred for the same reason as toggleFullscreen(): creating and
-        // ordering a new panel synchronously from a SwiftUI button action
-        // re-enters AppKit's layout pass mid-tap.
+        // Deferred: creating and ordering a new panel synchronously from a
+        // SwiftUI button action re-enters AppKit's layout pass mid-tap.
         DispatchQueue.main.async { [weak self] in
             self?.presentThemePicker(anchorRect: anchorRect)
         }
@@ -249,6 +296,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showContextMenu() {
         let menu = NSMenu()
+
+        let openWindowItem = NSMenuItem(title: "Open PCVL Window", action: #selector(openWindowFromMenu), keyEquivalent: "")
+        openWindowItem.target = self
+        menu.addItem(openWindowItem)
+
+        menu.addItem(NSMenuItem.separator())
 
         // Timer durations
         let workItem = NSMenuItem(title: "Work: \(viewModel.workDuration / 60) min", action: nil, keyEquivalent: "")
@@ -368,18 +421,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         themeManager.currentFont = font
     }
 
+    @objc private func openWindowFromMenu() {
+        windowController.show(section: .focus)
+    }
+
     @objc private func toggleAlwaysOnTop() {
-        let current = UserDefaults.standard.bool(forKey: "alwaysOnTop")
-        let newValue = !current
-        UserDefaults.standard.set(newValue, forKey: "alwaysOnTop")
-        setAlwaysOnTop(newValue)
+        UserDefaults.standard.alwaysOnTop.toggle()
     }
 
     @objc private func toggleMenuBarTimer() {
-        let current = UserDefaults.standard.bool(forKey: "showTimerInMenuBar")
-        UserDefaults.standard.set(!current, forKey: "showTimerInMenuBar")
-        viewModel.updateMenuBarIcon()
-        updateEventMonitors()
+        UserDefaults.standard.showTimerInMenuBar.toggle()
     }
 
     @objc private func resetStatistics() {
@@ -397,8 +448,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
-
-    // MARK: - Window Management
 
     // MARK: - Font Registration
     
@@ -432,49 +481,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
-    /// Frame to restore when leaving the zoomed state; nil while the panel is at
-    /// its normal size.
-    private var preZoomFrame: NSRect? {
-        // A screen-sized panel should not slide around when dragging inside charts.
-        didSet { panelWindow.isMovableByWindowBackground = preZoomFrame == nil }
-    }
-
-    /// Expands the panel to fill the screen, and back again.
-    ///
-    /// This deliberately does not use NSWindow.toggleFullScreen(_:). AppKit's
-    /// full-screen transition on a borderless, non-activating panel re-enters the
-    /// window's frame update from a frame-change notification posted mid-layout,
-    /// which trips "-layoutSubtreeIfNeeded on a view which is already being laid
-    /// out". Driving the frame directly skips the full-screen Space machinery —
-    /// and unlike toggleFullScreen(_:), it actually resizes this panel.
-    func toggleFullscreen() {
-        guard let screen = panelWindow.screen ?? NSScreen.main else { return }
-
-        // Deferred: this runs synchronously from a SwiftUI button action, and
-        // resizing the window mid-update re-enters AppKit's layout pass.
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            if let restored = self.preZoomFrame {
-                self.preZoomFrame = nil
-                self.panelWindow.setFrame(restored, display: true, animate: true)
-            } else {
-                self.preZoomFrame = self.panelWindow.frame
-                self.panelWindow.setFrame(screen.visibleFrame, display: true, animate: true)
-            }
-        }
-    }
-
-    func setAlwaysOnTop(_ enabled: Bool) {
-        // Deferred for the same reason as toggleFullscreen(): this is invoked
-        // synchronously from a SwiftUI .onChange, and mutating the panel's
-        // style mask / level mid-update re-enters AppKit's layout pass and
-        // trips "-layoutSubtreeIfNeeded on a view which is already being laid out".
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.panelWindow.isFloatingPanel = enabled
-            self.panelWindow.level = enabled ? .statusBar : .floating
-            self.updateEventMonitors()
-        }
+    private func applyAlwaysOnTop(_ enabled: Bool) {
+        panelWindow.isFloatingPanel = enabled
+        panelWindow.level = enabled ? .statusBar : .floating
+        updateEventMonitors()
     }
 
     func updateMenuBar(time: String, isRunning: Bool) {
@@ -494,5 +504,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.title = ""
             button.imagePosition = .imageOnly
         }
+    }
+}
+
+// MARK: - Observable Defaults
+
+/// KVO-visible accessors (names match the keys) so changes can be observed.
+extension UserDefaults {
+    @objc dynamic var alwaysOnTop: Bool {
+        get { bool(forKey: "alwaysOnTop") }
+        set { set(newValue, forKey: "alwaysOnTop") }
+    }
+
+    @objc dynamic var showTimerInMenuBar: Bool {
+        get { bool(forKey: "showTimerInMenuBar") }
+        set { set(newValue, forKey: "showTimerInMenuBar") }
     }
 }

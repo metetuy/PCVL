@@ -191,7 +191,12 @@ class ThemeManager: ObservableObject {
     }
 
     var colors: ThemeColors {
-        switch currentTheme {
+        Self.colors(for: currentTheme)
+    }
+
+    /// Palette of any theme, e.g. for previews in the theme picker.
+    static func colors(for theme: AppTheme) -> ThemeColors {
+        switch theme {
         case .minimalist:
             return ThemeColors(
                 background: Color(.windowBackgroundColor),

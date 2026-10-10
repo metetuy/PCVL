@@ -29,13 +29,13 @@ struct SettingsView: View {
 
                 // Data management
                 resetButton
-                exportButton // TEMPORARY: one-time migration button, remove after use
 
                 Spacer()
 
                 // Quit
                 quitButton
-                    .padding(.bottom, 12)
+                    // Leaves room for the panel's expand handle.
+                    .padding(.bottom, 28)
             }
             .padding(.horizontal, 14)
         }
@@ -131,8 +131,6 @@ struct SettingsView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
     }
-
-
 
     // MARK: - Display Section
 
@@ -262,8 +260,6 @@ struct SettingsView: View {
         )
     }
 
-    // MARK: - Display Section
-
     // MARK: - Behavior Section
 
     private var behaviorSection: some View {
@@ -278,14 +274,10 @@ struct SettingsView: View {
 
                     Spacer()
 
+                    // AppDelegate observes this default and updates the panel level.
                     Toggle("", isOn: $alwaysOnTop)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
-                        .onChange(of: alwaysOnTop) { _, newValue in
-                            if let delegate = NSApp.delegate as? AppDelegate {
-                                delegate.setAlwaysOnTop(newValue)
-                            }
-                        }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -302,9 +294,6 @@ struct SettingsView: View {
                     Toggle("", isOn: $showTimerInMenuBar)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
-                        .onChange(of: showTimerInMenuBar) { _, _ in
-                            viewModel.updateMenuBarIcon()
-                        }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -343,27 +332,6 @@ struct SettingsView: View {
         } message: {
             Text("Are you sure you want to delete all session records? This action cannot be undone.")
         }
-    }
-
-    // MARK: - Export
-
-    private var exportButton: some View {
-        Button {
-            statsManager.exportSessionsToJSON()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(theme.currentFont.font(size: 10))
-                Text("Export Sessions (JSON)")
-                    .font(theme.currentFont.font(size: 11, weight: .medium))
-            }
-            .foregroundColor(theme.colors.textSecondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(theme.colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Quit

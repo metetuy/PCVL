@@ -132,6 +132,31 @@ class StatisticsManager: ObservableObject {
     func currentStreak() -> Int {
         StatsAnalyzer().streaks(focusDays: focusDays()).current
     }
+
+    // MARK: - Snapshot
+
+    /// Fetches only what the period (and the previous one, for comparison) needs and
+    /// aggregates it. `offset` 0 is the current period, -1 the one before, and so on.
+    func snapshot(range: StatsRange, offset: Int = 0) -> StatsSnapshot {
+        let analyzer = StatsAnalyzer()
+        let earliest = firstSessionDate()
+        let period = analyzer.interval(for: range, offset: offset, earliest: earliest)
+        let fetchStart = range.supportsNavigation
+            ? analyzer.interval(for: range, offset: offset - 1, earliest: earliest).start
+            : period.start
+        let records = sessions(
+            from: fetchStart.addingTimeInterval(-StatsAnalyzer.spilloverLookback),
+            to: period.end
+        )
+        return analyzer.snapshot(
+            range: range,
+            offset: offset,
+            earliest: earliest,
+            sessions: records,
+            previousSessions: range.supportsNavigation ? records : nil,
+            focusDays: focusDays()
+        )
+    }
 }
 
 // MARK: - Export
