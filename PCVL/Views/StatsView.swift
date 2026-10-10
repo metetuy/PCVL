@@ -2,217 +2,122 @@ import SwiftUI
 
 // MARK: - Stats View
 
+/// Concise stats for the menu bar panel: today, this week, and the latest sessions.
+/// The full analytics live in the window (AnalyticsScreen).
 struct StatsView: View {
-    @ObservedObject var statsManager: StatisticsManager
+    @ObservedObject var viewModel: StatsSummaryViewModel
     @ObservedObject var theme: ThemeManager
+
+    @AppStorage(StatsTimeUnit.storageKey) private var unitRaw = StatsTimeUnit.minutes.rawValue
+    @State private var hoveredBucketID: Int?
+
+    private var unit: StatsTimeUnit { StatsTimeUnit(rawValue: unitRaw) ?? .minutes }
+    private var week: StatsSnapshot { viewModel.week }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 10) {
-                // Summary cards
-                summaryRow
-                    .padding(.top, 10)
-
-                // Weekly chart
-                weeklyChart
-                    .padding(.horizontal, 14)
-
-                // Recent sessions
-                recentSessionsList
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 12)
+                todayRow
+                weekCard
+                recentCard
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            // Leaves room for the panel's expand handle.
+            .padding(.bottom, 24)
         }
+        .onAppear { viewModel.refresh() }
     }
 
-    // MARK: - Summary Row
+    // MARK: - Today
 
-    private var summaryRow: some View {
+    private var todayRow: some View {
         HStack(spacing: 8) {
-            statCard(
-                value: "\(statsManager.todaySessions())",
-                label: "Sessions"
-            )
-            statCard(
-                value: "\(statsManager.todayFocusMinutes())m",
-                label: "Focus"
-            )
-            statCard(
-                value: "\(statsManager.currentStreak())d",
-                label: "Streak",
-                valueColor: theme.colors.accent
-            )
+            StatCard(value: unit.format(viewModel.todayFocusSeconds), label: "Today", theme: theme)
+            StatCard(value: "\(viewModel.todaySessions)", label: "Sessions", theme: theme)
+            StatCard(value: "\(viewModel.streak)d", label: "Streak", valueColor: theme.colors.accent, theme: theme)
         }
-        .padding(.horizontal, 14)
     }
 
-    private func statCard(value: String, label: String, valueColor: Color? = nil) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(theme.currentFont.font(size: 17, weight: .bold, design: .rounded))
-                .foregroundColor(valueColor ?? theme.colors.text)
-            Text(label.uppercased())
-                .font(theme.currentFont.font(size: 8, weight: .medium))
-                .foregroundColor(theme.colors.textSecondary)
-                .tracking(0.5)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(theme.colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
+    // MARK: - This Week
+
+    private var hoveredBucket: StatsBucket? {
+        hoveredBucketID.flatMap { id in week.buckets.first { $0.id == id } }
     }
 
-    // MARK: - Weekly Chart
-
-    private var weeklyChart: some View {
-        let data = statsManager.weeklyData()
-        let maxMinutes = max(data.map(\.minutes).max() ?? 1, 1)
-
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("THIS WEEK")
-                .font(theme.currentFont.font(size: 8, weight: .semibold))
-                .tracking(1.5)
-                .foregroundColor(theme.colors.textSecondary)
-
-            HStack(alignment: .bottom, spacing: 5) {
-                ForEach(Array(data.enumerated()), id: \.offset) { _, entry in
-                    VStack(spacing: 3) {
-                        // Bar
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(
-                                entry.isToday
-                                    ? theme.colors.accent
-                                    : theme.colors.accent.opacity(0.25)
-                            )
-                            .frame(
-                                height: max(
-                                    CGFloat(entry.minutes) / CGFloat(maxMinutes) * 46,
-                                    entry.minutes > 0 ? 4 : 2
-                                )
-                            )
-
-                        // Day label
-                        Text(entry.day)
-                            .font(theme.currentFont.font(size: 7, weight: entry.isToday ? .bold : .regular))
-                            .foregroundColor(
-                                entry.isToday
-                                    ? theme.colors.text
-                                    : theme.colors.textSecondary
-                            )
+    private var weekCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                if let bucket = hoveredBucket {
+                    SectionHeader(title: viewModel.bucketTitle(bucket), theme: theme)
+                    Spacer()
+                    valueText(unit.format(bucket.focusSeconds))
+                    secondaryText("· \(bucket.sessions) sessions")
+                } else {
+                    SectionHeader(title: "This week", theme: theme)
+                    Spacer()
+                    valueText(unit.format(week.focusSeconds))
+                    if let change = viewModel.changeText {
+                        secondaryText(change)
+                            .foregroundColor(viewModel.changeIsPositive ? theme.colors.accent : theme.colors.textSecondary)
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .frame(height: 62)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 3)
+            .lineLimit(1)
+
+            FocusBarChart(
+                buckets: week.buckets,
+                component: .day,
+                unit: unit,
+                averageSeconds: 0,
+                axisLabel: viewModel.axisLabel(for:),
+                hoveredID: $hoveredBucketID,
+                theme: theme
+            )
+            .frame(height: 56)
         }
         .padding(10)
-        .background(theme.colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
+        .cardBackground(theme)
     }
 
-    // MARK: - Recent Sessions
+    // MARK: - Recent
 
-    private var recentSessionsList: some View {
-        let sessions = statsManager.recentSessions(limit: 15)
+    private var recentCard: some View {
+        let sessions = Array(week.sessions.prefix(4))
 
         return VStack(alignment: .leading, spacing: 6) {
-            Text("RECENT")
-                .font(theme.currentFont.font(size: 8, weight: .semibold))
-                .tracking(1.5)
-                .foregroundColor(theme.colors.textSecondary)
+            SectionHeader(title: "Recent", theme: theme)
 
             if sessions.isEmpty {
-                Text("No sessions yet")
-                    .font(theme.currentFont.font(size: 11))
-                    .foregroundColor(theme.colors.textSecondary)
+                secondaryText("No sessions this week")
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 10)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(Array(sessions.enumerated()), id: \.offset) { index, session in
-                        sessionRow(session)
-
+                    ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                        SessionRow(session: session, theme: theme)
                         if index < sessions.count - 1 {
-                            Divider()
-                                .background(theme.colors.ringTrack)
+                            Divider().background(theme.colors.ringTrack)
                         }
                     }
                 }
             }
         }
         .padding(10)
-        .background(theme.colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
-    }
-
-    private func sessionRow(_ session: SessionRecord) -> some View {
-        HStack(spacing: 7) {
-            // Type badge
-            Circle()
-                .fill(badgeColor(for: session.sessionType))
-                .frame(width: 5, height: 5)
-
-            // Date
-            Text(formattedDate(session.date))
-                .font(theme.currentFont.font(size: 10))
-                .foregroundColor(theme.colors.text)
-
-            Spacer()
-
-            // Duration
-            Text(session.durationFormatted)
-                .font(theme.currentFont.font(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(theme.colors.textSecondary)
-
-            // Type label
-            Text(typeLabel(session.sessionType))
-                .font(theme.currentFont.font(size: 8, weight: .medium))
-                .foregroundColor(badgeColor(for: session.sessionType))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(badgeColor(for: session.sessionType).opacity(0.12))
-                .clipShape(Capsule())
-        }
-        .padding(.vertical, 5)
+        .cardBackground(theme)
     }
 
     // MARK: - Helpers
 
-    private func badgeColor(for type: SessionType) -> Color {
-        switch type {
-        case .work: return theme.colors.timerRing
-        case .shortBreak: return theme.colors.breakRing
-        case .stopwatch: return theme.colors.accent
-        }
+    private func valueText(_ text: String) -> some View {
+        Text(text)
+            .font(theme.currentFont.font(size: 9, weight: .bold))
+            .foregroundColor(theme.colors.text)
     }
 
-    private func typeLabel(_ type: SessionType) -> String {
-        switch type {
-        case .work: return "Focus"
-        case .shortBreak: return "Break"
-        case .stopwatch: return "Free"
-        }
-    }
-
-    private func formattedDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return "Today \(formatter.string(from: date))"
-        } else if calendar.isDateInYesterday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return "Yesterday \(formatter.string(from: date))"
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM d, HH:mm"
-            return formatter.string(from: date)
-        }
+    private func secondaryText(_ text: String) -> some View {
+        Text(text)
+            .font(theme.currentFont.font(size: 8, weight: .medium))
+            .foregroundColor(theme.colors.textSecondary)
     }
 }

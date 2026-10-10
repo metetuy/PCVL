@@ -1,28 +1,5 @@
 import SwiftUI
 
-// MARK: - Visual Effect Background
-
-/// Wraps NSVisualEffectView to give the panel native macOS vibrancy/blur.
-struct VisualEffectBackground: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .hudWindow
-    var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
-    var state: NSVisualEffectView.State = .active
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = state
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
-        nsView.state = state
-    }
-}
-
 // MARK: - Tab Enum
 
 enum AppTab: CaseIterable {
@@ -37,11 +14,13 @@ struct PopoverView: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var themeManager: ThemeManager
     @ObservedObject var statsManager: StatisticsManager
-    var onToggleFullscreen: () -> Void
+    @ObservedObject var statsSummary: StatsSummaryViewModel
+    /// Opens the full window on the section matching the given tab.
+    var onExpand: (AppTab) -> Void
     var onShowThemePicker: (CGRect) -> Void
 
     @State private var selectedTab: AppTab = .timer
-    @State private var swipeDelta: CGFloat = 0
+    @State private var isHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,16 +32,9 @@ struct PopoverView: View {
             ZStack {
                 switch selectedTab {
                 case .timer:
-                    TimerView(
-                        viewModel: viewModel,
-                        theme: themeManager,
-                        onToggleFullscreen: onToggleFullscreen
-                    )
+                    TimerView(viewModel: viewModel, theme: themeManager)
                 case .stats:
-                    StatsView(
-                        statsManager: statsManager,
-                        theme: themeManager
-                    )
+                    StatsView(viewModel: statsSummary, theme: themeManager)
                 case .settings:
                     SettingsView(
                         viewModel: viewModel,
@@ -74,11 +46,18 @@ struct PopoverView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .overlay(alignment: .bottom) {
+            ExpandHandle(theme: themeManager, isPanelHovered: isHovering) {
+                onExpand(selectedTab)
+            }
+            .padding(.bottom, 4)
+        }
         .coordinateSpace(name: "panel")
-        .frame(minWidth: 300, maxWidth: .infinity, minHeight: 190, maxHeight: .infinity)
-        .background(panelGradient)
+        .frame(width: 300, height: 190)
+        .background(ThemedBackground(theme: themeManager))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(themeManager.colors.text.opacity(0.08), lineWidth: 0.5))
+        .onHover { isHovering = $0 }
         .onAppear {
             SwipeMonitor.shared.onSwipe = { direction in
                 withAnimation(.easeInOut(duration: 0.15)) {
@@ -90,22 +69,6 @@ struct PopoverView: View {
         .onDisappear {
             SwipeMonitor.shared.stop()
         }
-    }
-
-    // MARK: - Panel Background
-
-    /// Static per-theme radial gradient — replaces the desktop-dependent blur so the
-    /// panel always renders the same vignette look regardless of what's behind it.
-    private var panelGradient: some View {
-        RadialGradient(
-            colors: [
-                themeManager.colors.background.lightened(by: 0.06),
-                themeManager.colors.background.darkened(by: 0.18)
-            ],
-            center: UnitPoint(x: 0.5, y: 0.35),
-            startRadius: 4,
-            endRadius: 220
-        )
     }
 
     // MARK: - Tab Bar
@@ -186,8 +149,10 @@ class SwipeMonitor {
     }
 
     private func handleScroll(_ event: NSEvent) {
+        // Only the panel swipes between tabs; the window scrolls normally.
+        guard event.window is NSPanel else { return }
         // Only handle direct touch-phase events, not momentum
-        guard event.momentumPhase == .init(rawValue: 0) else { return }
+        guard event.momentumPhase.isEmpty else { return }
 
         if event.phase == .began {
             accumulatedDeltaX = 0

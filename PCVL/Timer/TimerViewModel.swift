@@ -5,14 +5,17 @@ import UserNotifications
 
 @MainActor
 class TimerViewModel: ObservableObject {
-    @Published var engine = TimerEngine()
-    @Published var isBreak: Bool = false
-    
+    @Published private(set) var engine = TimerEngine()
+    @Published private(set) var isBreak: Bool = false
+    @Published private(set) var todayStats = TodayStats()
 
-    private var timer: Timer?
-    private var sessionStartDate: Date?
-    private var statisticsManager: StatisticsManager?
-    var menuBarUpdater: ((String, Bool) -> Void)?
+    /// Today's recorded focus totals, cached so the focus screen can show them
+    /// without querying the store on every tick.
+    struct TodayStats {
+        var focusSeconds = 0
+        var sessions = 0
+        var streak = 0
+    }
 
     enum AdjustableDuration {
         case work
@@ -20,155 +23,234 @@ class TimerViewModel: ObservableObject {
 
         var stepMinutes: Int {
             switch self {
-            case .work:
-                return 5
-            case .breakTime:
-                return 1
+            case .work: return 5
+            case .breakTime: return 1
             }
         }
 
         var bounds: ClosedRange<Int> {
             switch self {
-            case .work:
-                return 5...480
-            case .breakTime:
-                return 1...30
+            case .work: return 5...480
+            case .breakTime: return 1...30
+            }
+        }
+
+        var defaultMinutes: Int {
+            switch self {
+            case .work: return 25
+            case .breakTime: return 5
+            }
+        }
+
+        fileprivate var storageKey: String {
+            switch self {
+            case .work: return "workDuration"
+            case .breakTime: return "breakDuration"
             }
         }
     }
 
-    // Persisted durations (in seconds)
-    var workDuration: Int {
-        get { UserDefaults.standard.integer(forKey: "workDuration").clamped(to: AdjustableDuration.work.bounds.inSeconds, default: 1500) }
-        set {
-            guard engine.state == .idle else { return }
-            UserDefaults.standard.set(newValue, forKey: "workDuration")
-            if engine.state == .idle && engine.mode == .countDown && !isBreak {
-                engine.setTarget(seconds: newValue)
-            }
-            objectWillChange.send()
-        }
-    }
-
-    var breakDuration: Int {
-        get { UserDefaults.standard.integer(forKey: "breakDuration").clamped(to: AdjustableDuration.breakTime.bounds.inSeconds, default: 300) }
-        set {
-            guard engine.state == .idle else { return }
-            UserDefaults.standard.set(newValue, forKey: "breakDuration")
-            if engine.state == .idle && engine.mode == .countDown && isBreak {
-                engine.setTarget(seconds: newValue)
-            }
-            objectWillChange.send()
-        }
-    }
-
-    // MARK: - Computed State
-
-    var isRunning: Bool { engine.state == .running }
-    var isPaused: Bool { engine.state == .paused }
-    var isIdle: Bool { engine.state == .idle }
-    var isCompleted: Bool { engine.state == .completed }
-
-    var mode: TimerMode {
-        get { engine.mode }
-        set {
-            guard engine.state == .idle else { return }
-            engine.setMode(newValue)
-            if newValue == .countDown {
-                engine.setTarget(seconds: isBreak ? breakDuration : workDuration)
-            }
-            objectWillChange.send()
-        }
-    }
-
-    var modeLabel: String {
-        switch engine.mode {
-        case .countDown:
-            return isBreak ? "BREAK" : "FOCUS"
-        case .countUp:
-            return "STOPWATCH"
-        }
-    }
-
-    var editableCountdownDuration: AdjustableDuration? {
-        guard engine.state == .idle, engine.mode == .countDown else { return nil }
-        return isBreak ? .breakTime : .work
-    }
+    private var timer: Timer?
+    private var sessionStartDate: Date?
+    private var statisticsManager: StatisticsManager?
+    private var statsObserver: AnyCancellable?
+    /// Wall clock, replaceable in tests.
+    private let now: () -> Date
+    var menuBarUpdater: ((String, Bool) -> Void)?
 
     // MARK: - Setup
 
-    init() {
+    init(now: @escaping () -> Date = Date.init) {
+        self.now = now
         engine.setTarget(seconds: workDuration)
         requestNotificationPermission()
     }
 
     func setStatisticsManager(_ manager: StatisticsManager) {
         self.statisticsManager = manager
+        statsObserver = manager.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refreshTodayStats() }
+        refreshTodayStats()
+    }
+
+    func refreshTodayStats() {
+        guard let statisticsManager else { return }
+        let today = statisticsManager.todayFocusSummary()
+        todayStats = TodayStats(
+            focusSeconds: today.seconds,
+            sessions: today.sessions,
+            streak: statisticsManager.currentStreak()
+        )
+    }
+
+    // MARK: - Durations (persisted, in seconds)
+
+    var workDuration: Int {
+        get { storedSeconds(for: .work) }
+        set { setDuration(.work, minutes: newValue / 60) }
+    }
+
+    var breakDuration: Int {
+        get { storedSeconds(for: .breakTime) }
+        set { setDuration(.breakTime, minutes: newValue / 60) }
+    }
+
+    func durationMinutes(for duration: AdjustableDuration) -> Int {
+        storedSeconds(for: duration) / 60
+    }
+
+    func adjustDuration(_ duration: AdjustableDuration, byMinutes deltaMinutes: Int) {
+        setDuration(duration, minutes: durationMinutes(for: duration) + deltaMinutes)
+    }
+
+    /// Durations only change while idle; the countdown picks up the phase's new length.
+    func setDuration(_ duration: AdjustableDuration, minutes: Int) {
+        guard isIdle else { return }
+        let clamped = min(max(minutes, duration.bounds.lowerBound), duration.bounds.upperBound)
+        objectWillChange.send()
+        UserDefaults.standard.set(clamped * 60, forKey: duration.storageKey)
+        if engine.mode == .countDown && duration == currentPhase {
+            engine.setTarget(seconds: clamped * 60)
+        }
+    }
+
+    private func storedSeconds(for duration: AdjustableDuration) -> Int {
+        let minutes = UserDefaults.standard.integer(forKey: duration.storageKey) / 60
+        guard minutes > 0 else { return duration.defaultMinutes * 60 }
+        return min(max(minutes, duration.bounds.lowerBound), duration.bounds.upperBound) * 60
+    }
+
+    private var currentPhase: AdjustableDuration { isBreak ? .breakTime : .work }
+
+    // MARK: - Computed State
+
+    var isRunning: Bool { engine.state == .running }
+    var isPaused: Bool { engine.state == .paused }
+    var isIdle: Bool { engine.state == .idle }
+
+    var mode: TimerMode {
+        get { engine.mode }
+        set {
+            guard isIdle, newValue != engine.mode else { return }
+            engine.setMode(newValue)
+            if newValue == .countDown {
+                engine.setTarget(seconds: storedSeconds(for: currentPhase))
+            }
+        }
+    }
+
+    var modeLabel: String {
+        switch engine.mode {
+        case .countDown: return isBreak ? "BREAK" : "FOCUS"
+        case .countUp: return "STOPWATCH"
+        }
+    }
+
+    /// The countdown duration that scrolling over the time adjusts, when idle.
+    var editableCountdownDuration: AdjustableDuration? {
+        guard isIdle, engine.mode == .countDown else { return nil }
+        return currentPhase
+    }
+
+    /// One-line summary for the focus screen footer, including the session in progress.
+    var todaySummaryText: String {
+        let inProgress = !isBreak && (isRunning || isPaused) ? engine.elapsedSeconds : 0
+        let seconds = todayStats.focusSeconds + inProgress
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let focus = h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        let sessions = todayStats.sessions
+        return "Today \(focus) · \(sessions) session\(sessions == 1 ? "" : "s") · \(todayStats.streak)-day streak"
+    }
+
+    /// Duration of the phase that follows the current countdown, for the "up next" hint.
+    var nextPhaseLabel: String? {
+        guard engine.mode == .countDown else { return nil }
+        return isBreak
+            ? "Up next · Focus \(workDuration / 60) min"
+            : "Up next · Break \(breakDuration / 60) min"
     }
 
     // MARK: - Actions
 
-    func start() {
-        if engine.state == .idle {
-            sessionStartDate = Date()
+    /// Label for the main button: Start / Pause / Resume, or Skip once a phase completed.
+    var primaryActionLabel: String {
+        switch engine.state {
+        case .completed: return "Skip"
+        case .running: return "Pause"
+        case .paused: return "Resume"
+        case .idle: return "Start"
         }
-        engine.start()
+    }
+
+    /// The main button's action, shared by every timer screen.
+    func performPrimaryAction() {
+        switch engine.state {
+        case .completed: skipPhase()
+        case .running: pause()
+        case .paused, .idle: start()
+        }
+    }
+
+    func start() {
+        let date = now()
+        if isIdle {
+            sessionStartDate = date
+        }
+        engine.start(at: date)
         startTimer()
         updateMenuBarIcon()
     }
 
     func pause() {
-        engine.pause()
+        engine.pause(at: now())
         stopTimer()
         updateMenuBarIcon()
     }
 
+    /// Ends the current session (recording it) and returns to an idle focus countdown.
     func reset() {
-        recordSessionIfNeeded()
-        engine.reset()
+        endSession()
         isBreak = false
         if engine.mode == .countDown {
             engine.setTarget(seconds: workDuration)
         }
-        stopTimer()
-        sessionStartDate = nil
         updateMenuBarIcon()
     }
 
-    func skipToBreak() {
-        recordSessionIfNeeded()
-        engine.reset()
-        isBreak = true
-        engine.setTarget(seconds: breakDuration)
-        sessionStartDate = Date()
-        engine.start()
-        startTimer()
-    }
+    var canSkipPhase: Bool { engine.mode == .countDown && !isIdle }
 
-    func skipToWork() {
-        engine.reset()
-        isBreak = false
-        engine.setTarget(seconds: workDuration)
-        sessionStartDate = nil
-        updateMenuBarIcon()
+    /// Jumps to the other countdown phase: focus → break (starts right away),
+    /// break → focus (waits for the user).
+    func skipPhase() {
+        endSession()
+        isBreak.toggle()
+        engine.setTarget(seconds: storedSeconds(for: currentPhase))
+        if isBreak {
+            start()
+        } else {
+            updateMenuBarIcon()
+        }
     }
 
     // MARK: - Private
 
+    /// Records whatever ran of the current session and stops the clock.
+    private func endSession() {
+        engine.tick(at: now())
+        recordSessionIfNeeded()
+        sessionStartDate = nil
+        stopTimer()
+        engine.reset()
+    }
+
     private func startTimer() {
         stopTimer()
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.engine.tick()
-
-                self.updateMenuBarIcon()
-
-                if self.engine.state == .completed {
-                    self.handleCompletion()
-                }
-            }
+            Task { @MainActor [weak self] in self?.tick() }
         }
+        t.tolerance = 0.1
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
@@ -178,30 +260,31 @@ class TimerViewModel: ObservableObject {
         timer = nil
     }
 
+    private func tick() {
+        engine.tick(at: now())
+        updateMenuBarIcon()
+        if engine.state == .completed {
+            handleCompletion()
+        }
+    }
+
     private func handleCompletion() {
         stopTimer()
         recordSessionIfNeeded()
-        playCompletionSound()
+        NSSound(named: .init("Funk"))?.play()
         sendCompletionNotification()
         updateMenuBarIcon()
     }
 
     private func recordSessionIfNeeded() {
         guard engine.elapsedSeconds > 0, let startDate = sessionStartDate else { return }
-        let duration = engine.elapsedSeconds
         let type: SessionType
         switch engine.mode {
-        case .countDown:
-            type = isBreak ? .shortBreak : .work
-        case .countUp:
-            type = .stopwatch
+        case .countDown: type = isBreak ? .shortBreak : .work
+        case .countUp: type = .stopwatch
         }
-        statisticsManager?.recordSession(duration: duration, date: startDate, type: type)
+        statisticsManager?.recordSession(duration: engine.elapsedSeconds, date: startDate, type: type)
         sessionStartDate = nil
-    }
-
-    private func playCompletionSound() {
-        NSSound(named: .init("Funk"))?.play()
     }
 
     private func requestNotificationPermission() {
@@ -223,50 +306,6 @@ class TimerViewModel: ObservableObject {
     }
 
     func updateMenuBarIcon() {
-        menuBarUpdater?(engine.shortFormattedTime, isRunning)
-    }
-
-    func durationMinutes(for duration: AdjustableDuration) -> Int {
-        switch duration {
-        case .work:
-            return workDuration / 60
-        case .breakTime:
-            return breakDuration / 60
-        }
-    }
-
-    func adjustDuration(_ duration: AdjustableDuration, byMinutes deltaMinutes: Int) {
-        let updatedMinutes = clamp(durationMinutes(for: duration) + deltaMinutes, for: duration)
-        setDuration(duration, minutes: updatedMinutes)
-    }
-
-    func setDuration(_ duration: AdjustableDuration, minutes: Int) {
-        let clampedMinutes = clamp(minutes, for: duration)
-
-        switch duration {
-        case .work:
-            workDuration = clampedMinutes * 60
-        case .breakTime:
-            breakDuration = clampedMinutes * 60
-        }
-    }
-
-    private func clamp(_ minutes: Int, for duration: AdjustableDuration) -> Int {
-        Swift.min(Swift.max(minutes, duration.bounds.lowerBound), duration.bounds.upperBound)
-    }
-}
-
-// MARK: - Int Extension
-
-private extension Int {
-    func clamped(to range: ClosedRange<Int>, default defaultValue: Int) -> Int {
-        if self == 0 { return defaultValue }
-        return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
-    }
-}
-
-private extension ClosedRange where Bound == Int {
-    var inSeconds: ClosedRange<Int> {
-        (lowerBound * 60)...(upperBound * 60)
+        menuBarUpdater?(engine.formattedTime, isRunning)
     }
 }

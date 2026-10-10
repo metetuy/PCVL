@@ -137,36 +137,29 @@ enum AppFont: String, CaseIterable, Identifiable {
 
 // MARK: - Theme Manager
 
-class ThemeManager: ObservableObject {
-    @AppStorage("selectedTheme") var selectedThemeName: String = AppTheme.minimalist.rawValue {
-        didSet { objectWillChange.send() }
+final class ThemeManager: ObservableObject {
+    @Published var currentTheme: AppTheme {
+        didSet { UserDefaults.standard.set(currentTheme.rawValue, forKey: Keys.theme) }
     }
-    @AppStorage("selectedFont") var selectedFontName: String = AppFont.system.rawValue {
-        didSet { objectWillChange.send() }
+    @Published var currentFont: AppFont {
+        didSet { UserDefaults.standard.set(currentFont.rawValue, forKey: Keys.font) }
     }
-    @AppStorage("interFontWeightBoost") var interFontWeightBoost: Int = 1 {
-        didSet { objectWillChange.send() }
+    /// Extra weight steps (0–3) applied to Inter in the timer display.
+    @Published var interFontWeightBoost: Int {
+        didSet { UserDefaults.standard.set(interFontWeightBoost, forKey: Keys.weightBoost) }
     }
 
-    var currentTheme: AppTheme {
-        get { AppTheme(rawValue: selectedThemeName) ?? .minimalist }
-        set {
-            selectedThemeName = newValue.rawValue
-            objectWillChange.send()
-        }
+    private enum Keys {
+        static let theme = "selectedTheme"
+        static let font = "selectedFont"
+        static let weightBoost = "interFontWeightBoost"
     }
-    
-    var currentFont: AppFont {
-        get { AppFont(rawValue: selectedFontName) ?? .system }
-        set {
-            selectedFontName = newValue.rawValue
-            objectWillChange.send()
-        }
-    }
-    
-    // Helper method to get font with automatic weight boost applied
-    func getFont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
-        return currentFont.font(size: size, weight: weight, design: design, weightBoost: interFontWeightBoost)
+
+    init() {
+        let defaults = UserDefaults.standard
+        currentTheme = defaults.string(forKey: Keys.theme).flatMap(AppTheme.init(rawValue:)) ?? .minimalist
+        currentFont = defaults.string(forKey: Keys.font).flatMap(AppFont.init(rawValue:)) ?? .system
+        interFontWeightBoost = (defaults.object(forKey: Keys.weightBoost) as? Int) ?? 1
     }
 
     // Font specifically for the timer display — applies weight boost
@@ -191,7 +184,12 @@ class ThemeManager: ObservableObject {
     }
 
     var colors: ThemeColors {
-        switch currentTheme {
+        Self.colors(for: currentTheme)
+    }
+
+    /// Palette of any theme, e.g. for previews in the theme picker.
+    static func colors(for theme: AppTheme) -> ThemeColors {
+        switch theme {
         case .minimalist:
             return ThemeColors(
                 background: Color(.windowBackgroundColor),
