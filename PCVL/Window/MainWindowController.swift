@@ -85,7 +85,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     private let timerViewModel: TimerViewModel
     private let themeManager: ThemeManager
-    private let statsManager: StatisticsManager
+    private let settings: AppSettings
+    private let statsSummary: StatsSummaryViewModel
     let analyticsViewModel: AnalyticsViewModel
     /// Called once the window has closed because the user switched to the panel.
     private let onSwitchedToPanel: () -> Void
@@ -93,6 +94,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// What to do once the window has left full screen (closing a full-screen
     /// window directly would leave its Space behind).
     private var afterExitingFullScreen: (() -> Void)?
+    private var sectionObserver: AnyCancellable?
 
     static let defaultSize = NSSize(width: 1080, height: 720)
     static let minimumSize = NSSize(width: 720, height: 500)
@@ -100,15 +102,27 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     init(
         timerViewModel: TimerViewModel,
         themeManager: ThemeManager,
-        statsManager: StatisticsManager,
+        settings: AppSettings,
+        statsSummary: StatsSummaryViewModel,
         analyticsViewModel: AnalyticsViewModel,
         onSwitchedToPanel: @escaping () -> Void
     ) {
         self.timerViewModel = timerViewModel
         self.themeManager = themeManager
-        self.statsManager = statsManager
+        self.settings = settings
+        self.statsSummary = statsSummary
         self.analyticsViewModel = analyticsViewModel
         self.onSwitchedToPanel = onSwitchedToPanel
+        super.init()
+        // @Published emits before the change, so the new section comes from the value.
+        sectionObserver = state.$section.sink { [weak self] section in
+            self?.updateAnalyticsActivity(section: section)
+        }
+    }
+
+    /// Analytics only recomputes while its screen is shown in an open window.
+    private func updateAnalyticsActivity(section: WindowSection? = nil) {
+        analyticsViewModel.isActive = isOpen && (section ?? state.section) == .analytics
     }
 
     /// Window mode is active while the window is on screen or minimized to the Dock.
@@ -126,15 +140,13 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func bringToFront() {
         let window = self.window ?? makeWindow()
         self.window = window
-        if state.section == .analytics {
-            analyticsViewModel.refresh()
-        }
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
         // The app has no Dock icon, so activate explicitly to bring the window forward.
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        updateAnalyticsActivity()
     }
 
     func toggleFullScreen() {
@@ -193,6 +205,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         proposedOptions.union([.fullScreen, .autoHideToolbar, .autoHideMenuBar])
     }
 
+    func windowWillClose(_ notification: Notification) {
+        analyticsViewModel.isActive = false
+    }
+
     func windowDidExitFullScreen(_ notification: Notification) {
         let pending = afterExitingFullScreen
         afterExitingFullScreen = nil
@@ -230,7 +246,8 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             state: state,
             timerViewModel: timerViewModel,
             theme: themeManager,
-            statsManager: statsManager,
+            settings: settings,
+            summary: statsSummary,
             analytics: analyticsViewModel,
             onToggleFullScreen: { [weak self] in self?.toggleFullScreen() },
             onSwitchToPanel: { [weak self] in self?.switchToPanel() },

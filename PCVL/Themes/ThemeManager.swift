@@ -55,29 +55,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// Swatch color used to represent this theme in pickers (e.g. the theme flyout).
-    var previewColor: Color {
-        switch self {
-        case .minimalist: return Color(nsColor: NSColor(red: 0.35, green: 0.35, blue: 0.38, alpha: 1))
-        case .dark: return Color(nsColor: NSColor(red: 0.95, green: 0.6, blue: 0.25, alpha: 1))
-        case .light: return Color(nsColor: NSColor(red: 0.3, green: 0.3, blue: 0.65, alpha: 1))
-        case .ocean: return Color(nsColor: NSColor(red: 0.25, green: 0.7, blue: 0.85, alpha: 1))
-        case .bloom: return Color(nsColor: NSColor(red: 0.95, green: 0.4, blue: 0.55, alpha: 1))
-
-        case .roseDark: return Color(hex: "#dd2d4a")
-        case .roseLight: return Color(hex: "#fb6f92")
-        case .pinkSoft: return Color(hex: "#ff8fab")
-        case .navyBlue: return Color(hex: "#415a77")
-        case .slateBlue: return Color(hex: "#3e5c76")
-        case .teaGreen: return Color(hex: "#1b4965")
-        case .slateDark: return Color(hex: "#596d83")
-        case .warmEarth: return Color(hex: "#5ca4a9")
-        case .navyGold: return Color(hex: "#faf0ca")
-        case .lightBlue: return Color(hex: "#274c77")
-        case .charcoalLight: return Color(hex: "#eff1f3")
-        case .creamTeal: return Color(hex: "#0d5c63")
-        case .redNavy: return Color(hex: "#d7263d")
-        }
-    }
+    var previewColor: Color { ThemeManager.colors(for: self).accent }
 }
 
 // MARK: - Theme Colors
@@ -187,8 +165,20 @@ final class ThemeManager: ObservableObject {
         Self.colors(for: currentTheme)
     }
 
-    /// Palette of any theme, e.g. for previews in the theme picker.
+    /// Palette of any theme, e.g. for previews in the theme picker. Built once per
+    /// theme: views read colors many times per render.
     static func colors(for theme: AppTheme) -> ThemeColors {
+        palettes[theme] ?? makeColors(for: .minimalist)
+    }
+
+    private static let palettes: [AppTheme: ThemeColors] = Dictionary(
+        uniqueKeysWithValues: AppTheme.allCases.map { ($0, makeColors(for: $0)) }
+    )
+
+    /// `ringTrack` must differ from both `background` and `surface` (it draws the
+    /// progress track and dividers), and `accent` from `textSecondary` (selected vs
+    /// unselected controls).
+    private static func makeColors(for theme: AppTheme) -> ThemeColors {
         switch theme {
         case .minimalist:
             return ThemeColors(
@@ -296,7 +286,7 @@ final class ThemeManager: ObservableObject {
                 accent: Color(hex: "#415a77"),
                 timerRing: Color(hex: "#415a77"),
                 breakRing: Color(hex: "#778da9"),
-                ringTrack: Color(hex: "#0d1b2a")
+                ringTrack: Color(hex: "#2a3a52")
             )
 
         case .slateBlue:
@@ -308,7 +298,7 @@ final class ThemeManager: ObservableObject {
                 accent: Color(hex: "#3e5c76"),
                 timerRing: Color(hex: "#3e5c76"),
                 breakRing: Color(hex: "#748cab"),
-                ringTrack: Color(hex: "#0d1321")
+                ringTrack: Color(hex: "#2b3d57")
             )
 
         case .teaGreen:
@@ -332,7 +322,7 @@ final class ThemeManager: ObservableObject {
                 accent: Color(hex: "#596d83"),
                 timerRing: Color(hex: "#596d83"),
                 breakRing: Color(hex: "#788abb"),
-                ringTrack: Color(hex: "#110f11")
+                ringTrack: Color(hex: "#25384a")
             )
 
         case .warmEarth:
@@ -352,11 +342,11 @@ final class ThemeManager: ObservableObject {
                 background: Color(hex: "#0d3b66"),
                 surface: Color(hex: "#114d86"),
                 text: Color(hex: "#faf0ca"),
-                textSecondary: Color(hex: "#faf0ca"),
-                accent: Color(hex: "#faf0ca"),
-                timerRing: Color(hex: "#faf0ca"),
-                breakRing: Color(hex: "#faf0ca"),
-                ringTrack: Color(hex: "#0d3b66")
+                textSecondary: Color(hex: "#a9bccf"),
+                accent: Color(hex: "#f4d35e"),
+                timerRing: Color(hex: "#f4d35e"),
+                breakRing: Color(hex: "#ee964b"),
+                ringTrack: Color(hex: "#2a5d8f")
             )
 
         case .lightBlue:
@@ -364,11 +354,11 @@ final class ThemeManager: ObservableObject {
                 background: Color(hex: "#e7ecef"),
                 surface: Color(hex: "#c9e0ee"),
                 text: Color(hex: "#274c77"),
-                textSecondary: Color(hex: "#274c77"),
+                textSecondary: Color(hex: "#6b7c8c"),
                 accent: Color(hex: "#274c77"),
                 timerRing: Color(hex: "#274c77"),
-                breakRing: Color(hex: "#274c77"),
-                ringTrack: Color(hex: "#e7ecef")
+                breakRing: Color(hex: "#6096ba"),
+                ringTrack: Color(hex: "#b3c6d4")
             )
 
         case .charcoalLight:
@@ -376,11 +366,11 @@ final class ThemeManager: ObservableObject {
                 background: Color(hex: "#223843"),
                 surface: Color(hex: "#2e4c5b"),
                 text: Color(hex: "#eff1f3"),
-                textSecondary: Color(hex: "#eff1f3"),
-                accent: Color(hex: "#eff1f3"),
-                timerRing: Color(hex: "#eff1f3"),
-                breakRing: Color(hex: "#eff1f3"),
-                ringTrack: Color(hex: "#223843")
+                textSecondary: Color(hex: "#9fb1ba"),
+                accent: Color(hex: "#d77a61"),
+                timerRing: Color(hex: "#d77a61"),
+                breakRing: Color(hex: "#d8b4a0"),
+                ringTrack: Color(hex: "#3b5a69")
             )
 
         case .creamTeal:
@@ -388,11 +378,11 @@ final class ThemeManager: ObservableObject {
                 background: Color(hex: "#fffffa"),
                 surface: Color(hex: "#f0f0eb"),
                 text: Color(hex: "#0d5c63"),
-                textSecondary: Color(hex: "#0d5c63"),
+                textSecondary: Color(hex: "#6b8f91"),
                 accent: Color(hex: "#0d5c63"),
                 timerRing: Color(hex: "#0d5c63"),
-                breakRing: Color(hex: "#0d5c63"),
-                ringTrack: Color(hex: "#fffffa")
+                breakRing: Color(hex: "#44a1a0"),
+                ringTrack: Color(hex: "#dce3df")
             )
 
         case .redNavy:
@@ -400,11 +390,11 @@ final class ThemeManager: ObservableObject {
                 background: Color(hex: "#d7263d"),
                 surface: Color(hex: "#bd2136"),
                 text: Color(hex: "#02182b"),
-                textSecondary: Color(hex: "#02182b"),
-                accent: Color(hex: "#02182b"),
-                timerRing: Color(hex: "#02182b"),
+                textSecondary: Color(hex: "#5e1020"),
+                accent: Color(hex: "#fbeee0"),
+                timerRing: Color(hex: "#fbeee0"),
                 breakRing: Color(hex: "#02182b"),
-                ringTrack: Color(hex: "#d7263d")
+                ringTrack: Color(hex: "#a81c30")
             )
         }
     }

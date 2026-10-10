@@ -15,15 +15,18 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 - No external dependencies
 
 ## App architecture
-- **AppDelegate**: NSStatusItem + NSPanel setup, event monitors, right-click context menu, font registration, menu bar icon updates, panel ↔ window transitions, observes `alwaysOnTop` / `showTimerInMenuBar` defaults
+- **AppDelegate**: NSStatusItem + NSPanel setup, outside-click monitors, font registration, menu bar icon updates, panel ↔ window transitions, observes `AppSettings` (always on top, timer in menu bar)
+- **AppSettings**: ObservableObject owning the shared preferences (always on top, timer in menu bar, stats time unit) and the shared actions (reset statistics with confirmation, export, quit). The panel's settings tab, the window's settings screen and the context menu all bind to it
+- **StatusItemMenu**: Builds the right-click context menu and handles its actions through the same models
+- **ThemeFlyoutController**: The theme picker panel that pops out beside the main panel
 - **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed
 - **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects; elapsed time is measured against a wall-clock `Date` passed in, so late/throttled ticks never lose time
 - **TimerViewModel**: ObservableObject, drives all timer state, session recording, notifications
 - **ThemeManager**: Color schemes + font management, `@Published` properties persisted to UserDefaults
-- **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches
+- **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches, cached focus days for streaks; `didChange` fires after every save and when the day rolls over (also on wake / time zone change)
 - **StatsAnalyzer**: Pure aggregation (periods, buckets, streaks, distributions) — no side effects
-- **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit
-- **StatsSummaryViewModel**: ObservableObject for the panel's concise stats (today + this week)
+- **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit; only recomputes while active (set by MainWindowController), otherwise marks itself stale
+- **StatsSummaryViewModel**: Today + this week, shared by the panel's stats tab and the focus screen footer — the single source for "today"
 - **SwipeMonitor** (in PopoverView): NSEvent monitor for horizontal trackpad swipe to switch tabs
 
 ## Project structure
@@ -31,7 +34,10 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 PCVL/
 ├── App/
 │   ├── PCVLApp.swift              (entry point, delegates to AppDelegate)
-│   └── AppDelegate.swift          (menu bar icon, NSPanel, event handling, context menu)
+│   ├── AppDelegate.swift          (menu bar icon, NSPanel, event handling)
+│   ├── AppSettings.swift          (shared preferences + reset/export/quit actions)
+│   ├── StatusItemMenu.swift       (right-click context menu)
+│   └── ThemeFlyoutController.swift(theme picker flyout panel)
 ├── Window/                        (optional desktop window, one file per screen)
 │   ├── MainWindowController.swift (NSWindow setup + delegate, WindowSection, WindowState)
 │   ├── MainWindowView.swift       (collapsible sidebar, top bar: sidebar / full screen / panel)
@@ -46,7 +52,8 @@ PCVL/
 │   ├── SettingsView.swift         (durations, font, theme flyout, window toggles, reset)
 │   ├── ThemeFlyoutView.swift, HoverEffect.swift, SpringButtonStyle.swift
 ├── Components/                    (shared by panel and window)
-│   ├── TimerControls.swift        (mode toggle, primary/circle buttons, progress line, scroll-to-adjust)
+│   ├── TimerControls.swift        (mode toggle, control row, primary/circle buttons, progress line, scroll-to-adjust)
+│   ├── SettingsComponents.swift   (reset confirmation alert, duration stepper)
 │   ├── StatsComponents.swift      (cards, session row, segmented control, Swift Charts bar charts)
 │   └── ThemedBackground.swift     (per-theme radial gradient)
 ├── Timer/
@@ -63,7 +70,7 @@ PCVL/
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
-├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift
 └── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
 ```
 
@@ -73,14 +80,14 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - NSPanel (not NSPopover), borderless, non-activating, floating, fixed 300x190
 - Positioned dynamically below the status bar button
 - "Always on Top" elevates window level to `.statusBar`
-- Auto-close on outside click via global NSEvent monitor (disabled when Always on Top active)
+- Auto-close on outside click via global NSEvent monitor (disabled when Always on Top active, regardless of other settings)
 
 ### Timer
 - `TimerEngine` is a value type (struct); `TimerViewModel` owns it and fires a 1s `Timer` that only refreshes the display — time comes from the clock (`TimerViewModel(now:)` is injectable for tests)
 - Skipping or resetting records whatever ran of the current phase (focus, break or stopwatch)
 - Modes: `countDown` (work/break) | `countUp` (stopwatch)
 - States: `idle` | `running` | `paused` | `completed`
-- Duration config: work 5–480 min (default 25), break 1–30 min (default 5)
+- Duration config: work 5–480 min (default 25), break 1–30 min (default 5); the context menu offers `AdjustableDuration.menuPresets` plus the current value, disabled while a session runs
 - Scroll wheel over time display adjusts duration when idle (±5 min work, ±1 min break)
 - Haptic feedback fires every 80ms during scroll
 
@@ -104,6 +111,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - Time unit toggle: minutes or hours, persisted in UserDefaults (`statsTimeUnit`, `statsRange`)
 - Sessions are split at hour boundaries when aggregating, so long/overnight sessions land in the right buckets
 - Snapshot: totals per type, daily average, avg/longest session, best day, active days, peak hour/weekday, focus share, change vs previous period
+- Every surface derives "today" from the week snapshot (hour-split), never from whole sessions by start date
 - Streak = consecutive days with at least one focus session counting backwards from today; longest streak also tracked
 - Charts use Swift Charts (system framework) with hover readouts
 
@@ -142,4 +150,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - Do not add external packages without asking
 - Do not add WidgetKit — it is not implemented and not in current scope
 - SwiftUI views stay dumb — all logic belongs in ViewModels or Managers
+- Containers that only pass `TimerViewModel` down (PopoverView, MainWindowView, settings screens) hold it as a plain `let`; only views that display live time observe it, so a running timer doesn't re-render whole screens every second
+- Persisted preference keys live in their owner (`AppSettings`, `ThemeManager`, `TimerViewModel`, `AnalyticsViewModel`) — no raw keys or `@AppStorage` in views
+- Theme palettes: `ringTrack` must differ from `background` and `surface`, `accent` from `textSecondary`
 - Comments must be in English

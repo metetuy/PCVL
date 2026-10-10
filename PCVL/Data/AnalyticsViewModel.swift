@@ -4,7 +4,9 @@ import Combine
 // MARK: - Analytics View Model
 
 /// Drives the analytics window: selected range, period navigation and time unit.
-/// Recomputes once per change instead of on every render.
+/// Recomputes once per change instead of on every render, and only while the
+/// analytics screen is on screen; store changes in the meantime are applied when
+/// it becomes active again.
 @MainActor
 final class AnalyticsViewModel: ObservableObject {
     @Published private(set) var snapshot: StatsSnapshot = .empty
@@ -18,34 +20,54 @@ final class AnalyticsViewModel: ObservableObject {
         }
     }
 
-    @Published var unit: StatsTimeUnit {
-        didSet { UserDefaults.standard.set(unit.rawValue, forKey: StatsTimeUnit.storageKey) }
+    /// Shared with the panel through `AppSettings`.
+    var unit: StatsTimeUnit {
+        get { settings.statsTimeUnit }
+        set { settings.statsTimeUnit = newValue }
     }
 
     /// 0 = current period, -1 = previous one, and so on.
     @Published private(set) var offset: Int = 0
 
+    /// Set by the window controller while the analytics screen is visible.
+    var isActive = false {
+        didSet {
+            if isActive && isStale { refresh() }
+        }
+    }
+
+    private var isStale = true
     private let statsManager: StatisticsManager
+    private let settings: AppSettings
     private var cancellables = Set<AnyCancellable>()
 
     private static let rangeKey = "statsRange"
 
-    init(statsManager: StatisticsManager) {
+    init(statsManager: StatisticsManager, settings: AppSettings) {
         self.statsManager = statsManager
+        self.settings = settings
         range = StatsRange(rawValue: UserDefaults.standard.string(forKey: Self.rangeKey) ?? "") ?? .week
-        unit = .stored
 
-        // objectWillChange fires right after a save; recompute on the next run loop pass.
-        statsManager.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.refresh() }
+        statsManager.didChange
+            .sink { [weak self] in self?.storeDidChange() }
             .store(in: &cancellables)
-
-        refresh()
+        settings.$statsTimeUnit
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     func refresh() {
         snapshot = statsManager.snapshot(range: range, offset: offset)
+        isStale = false
+    }
+
+    private func storeDidChange() {
+        if isActive {
+            refresh()
+        } else {
+            isStale = true
+        }
     }
 
     // MARK: - Navigation

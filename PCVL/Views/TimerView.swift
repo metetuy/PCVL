@@ -25,26 +25,8 @@ struct TimerView: View {
             Spacer()
 
             // Center: reset | time + progress line | skip
-            HStack(spacing: 12) {
-                TimerCircleButton(icon: "arrow.counterclockwise", theme: theme) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        viewModel.reset()
-                    }
-                }
-                .disabled(viewModel.isIdle)
-                .opacity(viewModel.isIdle ? 0.3 : 1)
-                .help("Reset")
-
+            TimerControlRow(viewModel: viewModel, theme: theme) {
                 timerDisplay
-
-                TimerCircleButton(icon: "forward.end", iconSize: 10, theme: theme) {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        viewModel.skipPhase()
-                    }
-                }
-                .disabled(!viewModel.canSkipPhase)
-                .opacity(viewModel.canSkipPhase ? 1 : 0.3)
-                .help(viewModel.isBreak ? "Skip to focus" : "Skip to break")
             }
             .padding(.horizontal, 16)
 

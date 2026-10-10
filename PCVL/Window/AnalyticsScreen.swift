@@ -65,7 +65,6 @@ struct AnalyticsScreen: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .onAppear { viewModel.refresh() }
         .onChange(of: snapshot.interval) { _, _ in
             hoveredBucketID = nil
             hoveredHour = nil

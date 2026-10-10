@@ -3,13 +3,12 @@ import SwiftUI
 // MARK: - Settings View
 
 struct SettingsView: View {
-    @ObservedObject var viewModel: TimerViewModel
+    /// Not observed here: only the duration steppers depend on the timer's state.
+    let viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
-    @ObservedObject var statsManager: StatisticsManager
+    @ObservedObject var settings: AppSettings
     var onShowThemePicker: (CGRect) -> Void
 
-    @AppStorage("alwaysOnTop") private var alwaysOnTop: Bool = false
-    @AppStorage("showTimerInMenuBar") private var showTimerInMenuBar: Bool = false
     @State private var showingResetAlert = false
     @State private var themeButtonFrame: CGRect = .zero
 
@@ -49,29 +48,9 @@ struct SettingsView: View {
             sectionHeader("TIMER")
 
             VStack(spacing: 0) {
-                durationRow(
-                    label: "Work",
-                    minutes: viewModel.durationMinutes(for: .work),
-                    onDecrement: {
-                        viewModel.adjustDuration(.work, byMinutes: -TimerViewModel.AdjustableDuration.work.stepMinutes)
-                    },
-                    onIncrement: {
-                        viewModel.adjustDuration(.work, byMinutes: TimerViewModel.AdjustableDuration.work.stepMinutes)
-                    }
-                )
-
+                durationRow(label: "Work", duration: .work)
                 Divider().background(theme.colors.ringTrack)
-
-                durationRow(
-                    label: "Break",
-                    minutes: viewModel.durationMinutes(for: .breakTime),
-                    onDecrement: {
-                        viewModel.adjustDuration(.breakTime, byMinutes: -TimerViewModel.AdjustableDuration.breakTime.stepMinutes)
-                    },
-                    onIncrement: {
-                        viewModel.adjustDuration(.breakTime, byMinutes: TimerViewModel.AdjustableDuration.breakTime.stepMinutes)
-                    }
-                )
+                durationRow(label: "Break", duration: .breakTime)
             }
             .background(theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -79,12 +58,7 @@ struct SettingsView: View {
         }
     }
 
-    private func durationRow(
-        label: String,
-        minutes: Int,
-        onDecrement: @escaping () -> Void,
-        onIncrement: @escaping () -> Void
-    ) -> some View {
+    private func durationRow(label: String, duration: TimerViewModel.AdjustableDuration) -> some View {
         HStack {
             Text(label)
                 .font(theme.currentFont.font(size: 11, weight: .medium))
@@ -92,41 +66,7 @@ struct SettingsView: View {
 
             Spacer()
 
-            HStack(spacing: 10) {
-                Button {
-                    onDecrement()
-                } label: {
-                    Image(systemName: "minus")
-                        .font(theme.currentFont.font(size: 9, weight: .bold))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 19, height: 19)
-                        .background(theme.colors.background)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
-                .disabled(!viewModel.isIdle)
-                .hoverEffect()
-
-                Text("\(minutes) min")
-                    .font(theme.currentFont.font(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(theme.colors.text)
-                    .frame(width: 44)
-
-                Button {
-                    onIncrement()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(theme.currentFont.font(size: 9, weight: .bold))
-                        .foregroundColor(theme.colors.textSecondary)
-                        .frame(width: 19, height: 19)
-                        .background(theme.colors.background)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
-                .disabled(!viewModel.isIdle)
-                .hoverEffect()
-            }
-            .opacity(viewModel.isIdle ? 1 : 0.4)
+            DurationStepper(duration: duration, viewModel: viewModel, theme: theme)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -274,8 +214,8 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    // AppDelegate observes this default and updates the panel level.
-                    Toggle("", isOn: $alwaysOnTop)
+                    // AppDelegate observes this setting and updates the panel level.
+                    Toggle("", isOn: $settings.alwaysOnTop)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                 }
@@ -291,7 +231,7 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $showTimerInMenuBar)
+                    Toggle("", isOn: $settings.showTimerInMenuBar)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                 }
@@ -324,22 +264,13 @@ struct SettingsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .alert("Reset Statistics", isPresented: $showingResetAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reset", role: .destructive) {
-                statsManager.deleteAllSessions()
-            }
-        } message: {
-            Text("Are you sure you want to delete all session records? This action cannot be undone.")
-        }
+        .resetStatisticsAlert(isPresented: $showingResetAlert, settings: settings)
     }
 
     // MARK: - Quit
 
     private var quitButton: some View {
-        Button {
-            NSApp.terminate(nil)
-        } label: {
+        Button(action: settings.quit) {
             HStack(spacing: 5) {
                 Image(systemName: "power")
                     .font(theme.currentFont.font(size: 10))

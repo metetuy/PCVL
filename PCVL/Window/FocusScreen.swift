@@ -7,6 +7,7 @@ import SwiftUI
 struct FocusScreen: View {
     @ObservedObject var viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
+    @ObservedObject var summary: StatsSummaryViewModel
 
     var body: some View {
         GeometryReader { geo in
@@ -49,34 +50,15 @@ struct FocusScreen: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .onAppear { viewModel.refreshTodayStats() }
     }
 
     // MARK: - Controls
 
     private func controls(scale: CGFloat) -> some View {
-        HStack(spacing: 22 * scale) {
-            TimerCircleButton(icon: "arrow.counterclockwise", scale: scale, theme: theme) {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    viewModel.reset()
-                }
-            }
-            .disabled(viewModel.isIdle)
-            .opacity(viewModel.isIdle ? 0.3 : 1)
-            .help("Reset")
-
+        TimerControlRow(viewModel: viewModel, theme: theme, scale: scale, spacing: 22 * scale) {
             TimerPrimaryButton(viewModel: viewModel, theme: theme, scale: scale)
                 .keyboardShortcut(.space, modifiers: [])
                 .help("Start / pause (Space)")
-
-            TimerCircleButton(icon: "forward.end", iconSize: 10, scale: scale, theme: theme) {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    viewModel.skipPhase()
-                }
-            }
-            .disabled(!viewModel.canSkipPhase)
-            .opacity(viewModel.canSkipPhase ? 1 : 0.3)
-            .help(viewModel.isBreak ? "Skip to focus" : "Skip to break")
         }
     }
 
@@ -84,7 +66,7 @@ struct FocusScreen: View {
 
     private var footer: some View {
         HStack {
-            Text(viewModel.todaySummaryText)
+            Text(summary.todaySummaryText(inProgressSeconds: viewModel.inProgressFocusSeconds))
             Spacer()
             if let next = viewModel.nextPhaseLabel {
                 Text(next)

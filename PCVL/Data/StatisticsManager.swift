@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import Combine
 import AppKit
-import UniformTypeIdentifiers
 
 // MARK: - Session Type
 
@@ -34,9 +33,19 @@ class SessionRecord {
 // MARK: - Statistics Manager
 
 @MainActor
-class StatisticsManager: ObservableObject {
+final class StatisticsManager {
     let modelContainer: ModelContainer
     private var modelContext: ModelContext
+
+    /// Fires after the store changed, and when the calendar day rolls over (or the Mac
+    /// wakes or the time zone changes), so "today" and streaks never go stale.
+    /// Subscribers recompute whatever they derive from the store.
+    let didChange = PassthroughSubject<Void, Never>()
+
+    /// Start-of-day dates with at least one focus session, kept in sync with inserts
+    /// and deletes so streaks never rescan the whole store. Nil until first needed.
+    private var focusDayCache: Set<Date>?
+    private var observers = Set<AnyCancellable>()
 
     /// `inMemory` keeps records out of the user's store (used by tests).
     init(inMemory: Bool = false) {
@@ -48,6 +57,23 @@ class StatisticsManager: ObservableObject {
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
+        observeClock()
+    }
+
+    private func observeClock() {
+        let center = NotificationCenter.default
+        Publishers.MergeMany(
+            center.publisher(for: .NSCalendarDayChanged),
+            center.publisher(for: .NSSystemTimeZoneDidChange),
+            NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            // Day boundaries move with the time zone, so cached days are rebuilt.
+            self?.focusDayCache = nil
+            self?.didChange.send()
+        }
+        .store(in: &observers)
     }
 
     // MARK: - Record
@@ -56,17 +82,20 @@ class StatisticsManager: ObservableObject {
         do {
             try modelContext.delete(model: SessionRecord.self)
             try modelContext.save()
-            objectWillChange.send()
         } catch {
             print("Failed to delete all sessions: \(error)")
         }
+        focusDayCache = nil
+        didChange.send()
     }
 
     func recordSession(duration: Int, date: Date, type: SessionType) {
-        let record = SessionRecord(duration: duration, date: date, type: type)
-        modelContext.insert(record)
+        modelContext.insert(SessionRecord(duration: duration, date: date, type: type))
         try? modelContext.save()
-        objectWillChange.send()
+        if type != .shortBreak {
+            focusDayCache?.insert(Calendar.current.startOfDay(for: date))
+        }
+        didChange.send()
     }
 
     // MARK: - Queries
@@ -96,8 +125,9 @@ class StatisticsManager: ObservableObject {
     }
 
     /// Distinct calendar days (start of day) with at least one focus session.
-    /// Used for streak calculations.
-    func focusDays(calendar: Calendar = .current) -> Set<Date> {
+    /// Used for streak calculations; scanned from the store once, then cached.
+    func focusDays() -> Set<Date> {
+        if let focusDayCache { return focusDayCache }
         let work = SessionType.work.rawValue
         let stopwatch = SessionType.stopwatch.rawValue
         var descriptor = FetchDescriptor<SessionRecord>(
@@ -105,24 +135,10 @@ class StatisticsManager: ObservableObject {
         )
         descriptor.propertiesToFetch = [\.date]
         let sessions = (try? modelContext.fetch(descriptor)) ?? []
-        return Set(sessions.map { calendar.startOfDay(for: $0.date) })
-    }
-
-    // MARK: - Today
-
-    /// Focus seconds and focus session count for today.
-    func todayFocusSummary() -> (seconds: Int, sessions: Int) {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else { return (0, 0) }
-        let focus = sessions(from: today, to: tomorrow).filter { $0.sessionType != .shortBreak }
-        return (focus.reduce(0) { $0 + $1.duration }, focus.count)
-    }
-
-    // MARK: - Streak
-
-    func currentStreak() -> Int {
-        StatsAnalyzer().streaks(focusDays: focusDays()).current
+        let days = Set(sessions.map { calendar.startOfDay(for: $0.date) })
+        focusDayCache = days
+        return days
     }
 
     // MARK: - Snapshot
@@ -140,8 +156,7 @@ class StatisticsManager: ObservableObject {
             from: fetchStart.addingTimeInterval(-StatsAnalyzer.spilloverLookback),
             to: period.end
         )
-        .enumerated()
-        .map { StatsSessionItem(id: $0.offset, date: $0.element.date, duration: $0.element.duration, type: $0.element.sessionType) }
+        .map { StatsSessionItem(id: $0.persistentModelID, date: $0.date, duration: $0.duration, type: $0.sessionType) }
         return analyzer.snapshot(
             range: range,
             offset: offset,
@@ -156,33 +171,28 @@ class StatisticsManager: ObservableObject {
 // MARK: - Export
 
 extension StatisticsManager {
-    /// Writes all recorded sessions to a user-chosen JSON file. Each entry is
-    /// `{ duration, type, created_at }` with an ISO8601 timestamp, so the file
-    /// can be re-imported or processed elsewhere.
-    func exportSessionsToJSON() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "sessions_export.json"
-        panel.allowedContentTypes = [.json]
+    /// One exported session: `{ duration, type, created_at }` with an ISO8601
+    /// timestamp, so the file can be re-imported or processed elsewhere.
+    private struct ExportedSession: Encodable {
+        let duration: Int
+        let type: String
+        let createdAt: String
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        enum CodingKeys: String, CodingKey {
+            case duration, type
+            case createdAt = "created_at"
+        }
+    }
 
+    /// Every recorded session, newest first, as pretty-printed JSON.
+    func exportedSessionsJSON() throws -> Data {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        let sessions = allSessions().map { session in
-            [
-                "duration": session.duration,
-                "type": session.type,
-                "created_at": formatter.string(from: session.date)
-            ] as [String: Any]
+        let sessions = allSessions().map {
+            ExportedSession(duration: $0.duration, type: $0.type, createdAt: formatter.string(from: $0.date))
         }
-
-        do {
-            let data = try JSONSerialization.data(withJSONObject: sessions, options: [.prettyPrinted])
-            try data.write(to: url)
-            print("Exported \(sessions.count) sessions to \(url.path)")
-        } catch {
-            print("Failed to export sessions: \(error)")
-        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(sessions)
     }
 }

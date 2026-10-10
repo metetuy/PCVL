@@ -5,12 +5,12 @@ import SwiftUI
 /// Window-sized settings: timer durations, appearance with live theme previews,
 /// menu bar behavior and data management.
 struct SettingsScreen: View {
-    @ObservedObject var timerViewModel: TimerViewModel
+    /// Not observed here: only the duration rows depend on the timer's state, so a
+    /// running timer does not re-render the whole screen every second.
+    let timerViewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
-    let statsManager: StatisticsManager
+    @ObservedObject var settings: AppSettings
 
-    @AppStorage("alwaysOnTop") private var alwaysOnTop = false
-    @AppStorage("showTimerInMenuBar") private var showTimerInMenuBar = false
     @State private var showingResetAlert = false
 
     var body: some View {
@@ -32,56 +32,29 @@ struct SettingsScreen: View {
             .frame(maxWidth: 680, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .alert("Reset Statistics", isPresented: $showingResetAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reset", role: .destructive) {
-                statsManager.deleteAllSessions()
-            }
-        } message: {
-            Text("Are you sure you want to delete all session records? This action cannot be undone.")
-        }
+        .resetStatisticsAlert(isPresented: $showingResetAlert, settings: settings)
     }
 
     // MARK: - Timer
 
     private var timerSection: some View {
-        settingsGroup("Timer", footnote: timerViewModel.isIdle ? nil : "Durations can be changed while the timer is idle.") {
+        settingsGroup("Timer") {
             durationRow(.work, title: "Focus duration", subtitle: "5–480 minutes")
             divider
             durationRow(.breakTime, title: "Break duration", subtitle: "1–30 minutes")
+        } footer: {
+            DurationLockedNote(
+                text: "Durations can be changed while the timer is idle.",
+                viewModel: timerViewModel,
+                theme: theme
+            )
         }
     }
 
     private func durationRow(_ duration: TimerViewModel.AdjustableDuration, title: String, subtitle: String) -> some View {
         row(title: title, subtitle: subtitle) {
-            HStack(spacing: 12) {
-                stepButton(icon: "minus") {
-                    timerViewModel.adjustDuration(duration, byMinutes: -duration.stepMinutes)
-                }
-                Text("\(timerViewModel.durationMinutes(for: duration)) min")
-                    .font(theme.currentFont.font(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(theme.colors.text)
-                    .frame(minWidth: 64)
-                stepButton(icon: "plus") {
-                    timerViewModel.adjustDuration(duration, byMinutes: duration.stepMinutes)
-                }
-            }
-            .disabled(!timerViewModel.isIdle)
-            .opacity(timerViewModel.isIdle ? 1 : 0.4)
+            DurationStepper(duration: duration, viewModel: timerViewModel, theme: theme, scale: 1.2)
         }
-    }
-
-    private func stepButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(theme.currentFont.font(size: 10, weight: .bold))
-                .foregroundColor(theme.colors.textSecondary)
-                .frame(width: 24, height: 24)
-                .background(theme.colors.background)
-                .clipShape(Circle())
-        }
-        .buttonStyle(SpringButtonStyle(kind: .secondary, theme: theme))
-        .hoverEffect()
     }
 
     // MARK: - Theme
@@ -137,13 +110,13 @@ struct SettingsScreen: View {
     private var menuBarSection: some View {
         settingsGroup("Menu bar panel") {
             row(title: "Always on top", subtitle: "Keep the panel open above other windows") {
-                Toggle("", isOn: $alwaysOnTop)
+                Toggle("", isOn: $settings.alwaysOnTop)
                     .toggleStyle(.switch)
                     .controlSize(.small)
             }
             divider
             row(title: "Timer in menu bar", subtitle: "Show the remaining time next to the icon") {
-                Toggle("", isOn: $showTimerInMenuBar)
+                Toggle("", isOn: $settings.showTimerInMenuBar)
                     .toggleStyle(.switch)
                     .controlSize(.small)
             }
@@ -155,9 +128,7 @@ struct SettingsScreen: View {
     private var dataSection: some View {
         settingsGroup("Data") {
             row(title: "Export sessions", subtitle: "Save every recorded session as JSON") {
-                actionButton(title: "Export…", icon: "square.and.arrow.up", color: theme.colors.text) {
-                    statsManager.exportSessionsToJSON()
-                }
+                actionButton(title: "Export…", icon: "square.and.arrow.up", color: theme.colors.text, action: settings.exportSessions)
             }
             divider
             row(title: "Reset statistics", subtitle: "Delete all session records") {
@@ -167,9 +138,7 @@ struct SettingsScreen: View {
             }
             divider
             row(title: "Quit PCVL", subtitle: nil) {
-                actionButton(title: "Quit", icon: "power", color: Color(nsColor: NSColor(red: 0.85, green: 0.3, blue: 0.3, alpha: 1))) {
-                    NSApp.terminate(nil)
-                }
+                actionButton(title: "Quit", icon: "power", color: Color(nsColor: NSColor(red: 0.85, green: 0.3, blue: 0.3, alpha: 1)), action: settings.quit)
             }
         }
     }
@@ -194,10 +163,10 @@ struct SettingsScreen: View {
 
     // MARK: - Layout Helpers
 
-    private func settingsGroup<Content: View>(
+    private func settingsGroup<Content: View, Footer: View>(
         _ title: String,
-        footnote: String? = nil,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder footer: () -> Footer = { EmptyView() }
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: title, theme: theme, scale: 1.2)
@@ -205,11 +174,7 @@ struct SettingsScreen: View {
                 content()
             }
             .cardBackground(theme, radius: 10)
-            if let footnote {
-                Text(footnote)
-                    .font(theme.currentFont.font(size: 11))
-                    .foregroundColor(theme.colors.textSecondary)
-            }
+            footer()
         }
     }
 

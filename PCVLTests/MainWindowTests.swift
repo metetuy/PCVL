@@ -26,11 +26,13 @@ struct MainWindowTests {
             let type: SessionType = index % 3 == 0 ? .shortBreak : (index % 5 == 0 ? .stopwatch : .work)
             stats.recordSession(duration: 600 + index * 37 % 4000, date: Date().addingTimeInterval(-Double(index) * 5400), type: type)
         }
+        let settings = AppSettings(statsManager: stats)
         let controller = MainWindowController(
             timerViewModel: TimerViewModel(),
             themeManager: ThemeManager(),
-            statsManager: stats,
-            analyticsViewModel: AnalyticsViewModel(statsManager: stats),
+            settings: settings,
+            statsSummary: StatsSummaryViewModel(statsManager: stats, settings: settings),
+            analyticsViewModel: AnalyticsViewModel(statsManager: stats, settings: settings),
             onSwitchedToPanel: {}
         )
         controller.show(section: .focus)

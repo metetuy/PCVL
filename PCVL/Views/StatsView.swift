@@ -8,10 +8,9 @@ struct StatsView: View {
     @ObservedObject var viewModel: StatsSummaryViewModel
     @ObservedObject var theme: ThemeManager
 
-    @AppStorage(StatsTimeUnit.storageKey) private var unitRaw = StatsTimeUnit.minutes.rawValue
     @State private var hoveredBucketID: Int?
 
-    private var unit: StatsTimeUnit { StatsTimeUnit(rawValue: unitRaw) ?? .minutes }
+    private var unit: StatsTimeUnit { viewModel.unit }
     private var week: StatsSnapshot { viewModel.week }
 
     var body: some View {
@@ -26,7 +25,6 @@ struct StatsView: View {
             // Leaves room for the panel's expand handle.
             .padding(.bottom, 24)
         }
-        .onAppear { viewModel.refresh() }
     }
 
     // MARK: - Today

@@ -60,6 +60,42 @@ struct TimerCircleButton: View {
     }
 }
 
+// MARK: - Control Row
+
+/// Reset | center | skip — the one control row shared by the panel and the focus
+/// screen, so both apply the same reset and skip rules.
+struct TimerControlRow<Center: View>: View {
+    @ObservedObject var viewModel: TimerViewModel
+    @ObservedObject var theme: ThemeManager
+    var scale: CGFloat = 1
+    var spacing: CGFloat = 12
+    @ViewBuilder let center: () -> Center
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            TimerCircleButton(icon: "arrow.counterclockwise", scale: scale, theme: theme) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    viewModel.reset()
+                }
+            }
+            .disabled(viewModel.isIdle)
+            .opacity(viewModel.isIdle ? 0.3 : 1)
+            .help("Reset")
+
+            center()
+
+            TimerCircleButton(icon: "forward.end", iconSize: 10, scale: scale, theme: theme) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    viewModel.skipPhase()
+                }
+            }
+            .disabled(!viewModel.canSkipPhase)
+            .opacity(viewModel.canSkipPhase ? 1 : 0.3)
+            .help(viewModel.isBreak ? "Skip to focus" : "Skip to break")
+        }
+    }
+}
+
 // MARK: - Primary Button
 
 /// Start / Pause / Resume / Skip capsule.

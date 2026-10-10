@@ -45,13 +45,6 @@ enum StatsTimeUnit: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// UserDefaults key shared by the panel and the analytics window.
-    static let storageKey = "statsTimeUnit"
-
-    static var stored: StatsTimeUnit {
-        StatsTimeUnit(rawValue: UserDefaults.standard.string(forKey: storageKey) ?? "") ?? .minutes
-    }
-
     var symbol: String {
         switch self {
         case .minutes: return "m"
@@ -97,7 +90,9 @@ enum StatsTimeUnit: String, CaseIterable, Identifiable {
 /// Value copy of a `SessionRecord`, safe to keep around after the store changes;
 /// also the analyzer's input, so aggregation never touches the store.
 struct StatsSessionItem: Identifiable {
-    let id: Int
+    /// The record's `persistentModelID`, so list rows keep their identity when new
+    /// sessions arrive (any unique value works for records built in tests).
+    let id: AnyHashable
     let date: Date
     let duration: Int
     let type: SessionType

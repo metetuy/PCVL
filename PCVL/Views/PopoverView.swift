@@ -11,10 +11,11 @@ enum AppTab: CaseIterable {
 // MARK: - Popover View (Shell)
 
 struct PopoverView: View {
-    @ObservedObject var viewModel: TimerViewModel
+    /// Not observed: the engine publishes every second; each tab observes what it shows.
+    let viewModel: TimerViewModel
     @ObservedObject var themeManager: ThemeManager
-    @ObservedObject var statsManager: StatisticsManager
-    @ObservedObject var statsSummary: StatsSummaryViewModel
+    let settings: AppSettings
+    let statsSummary: StatsSummaryViewModel
     /// Opens the full window on the section matching the given tab.
     var onExpand: (AppTab) -> Void
     var onShowThemePicker: (CGRect) -> Void
@@ -39,7 +40,7 @@ struct PopoverView: View {
                     SettingsView(
                         viewModel: viewModel,
                         theme: themeManager,
-                        statsManager: statsManager,
+                        settings: settings,
                         onShowThemePicker: onShowThemePicker
                     )
                 }

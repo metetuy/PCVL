@@ -3,19 +3,26 @@ import Combine
 
 // MARK: - Stats Summary View Model
 
-/// Backs the concise stats tab in the menu bar panel: today and the current week.
+/// Today and the current week, shared by the panel's stats tab and the window's focus
+/// screen footer, so "today" is derived one way everywhere: from the week snapshot,
+/// with sessions split at hour boundaries like the rest of the analytics.
 @MainActor
 final class StatsSummaryViewModel: ObservableObject {
     @Published private(set) var week: StatsSnapshot = .empty
 
     private let statsManager: StatisticsManager
+    private let settings: AppSettings
     private var cancellables = Set<AnyCancellable>()
 
-    init(statsManager: StatisticsManager) {
+    init(statsManager: StatisticsManager, settings: AppSettings) {
         self.statsManager = statsManager
-        statsManager.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.refresh() }
+        self.settings = settings
+        statsManager.didChange
+            .sink { [weak self] in self?.refresh() }
+            .store(in: &cancellables)
+        settings.$statsTimeUnit
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         refresh()
     }
@@ -26,11 +33,22 @@ final class StatsSummaryViewModel: ObservableObject {
 
     private var today: StatsBucket? { week.buckets.first { $0.isCurrent } }
 
+    var unit: StatsTimeUnit { settings.statsTimeUnit }
     var todayFocusSeconds: Int { today?.focusSeconds ?? 0 }
     var todaySessions: Int { today?.sessions ?? 0 }
     var streak: Int { week.currentStreak }
     var changeText: String? { StatsFormat.changeText(week.changeRatio) }
     var changeIsPositive: Bool { (week.changeRatio ?? 0) >= 0 }
+
+    /// One-line summary for the focus screen footer, including the session in progress.
+    func todaySummaryText(inProgressSeconds: Int) -> String {
+        let seconds = todayFocusSeconds + inProgressSeconds
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let focus = h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        let sessions = todaySessions
+        return "Today \(focus) · \(sessions) session\(sessions == 1 ? "" : "s") · \(streak)-day streak"
+    }
 
     func axisLabel(for date: Date) -> String {
         StatsFormat.axisLabel(for: date, component: .day, range: .week)

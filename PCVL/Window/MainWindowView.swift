@@ -7,9 +7,12 @@ import SwiftUI
 /// its own file.
 struct MainWindowView: View {
     @ObservedObject var state: WindowState
-    @ObservedObject var timerViewModel: TimerViewModel
+    /// Not observed: the engine publishes every second, and only the screens and the
+    /// sidebar status that show live time observe it themselves.
+    let timerViewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
-    let statsManager: StatisticsManager
+    let settings: AppSettings
+    let summary: StatsSummaryViewModel
     let analytics: AnalyticsViewModel
     let onToggleFullScreen: () -> Void
     let onSwitchToPanel: () -> Void
@@ -62,11 +65,11 @@ struct MainWindowView: View {
     private var screen: some View {
         switch state.section {
         case .focus:
-            FocusScreen(viewModel: timerViewModel, theme: theme)
+            FocusScreen(viewModel: timerViewModel, theme: theme, summary: summary)
         case .analytics:
             AnalyticsScreen(viewModel: analytics, theme: theme)
         case .settings:
-            SettingsScreen(timerViewModel: timerViewModel, theme: theme, statsManager: statsManager)
+            SettingsScreen(timerViewModel: timerViewModel, theme: theme, settings: settings)
         }
     }
 
@@ -137,51 +140,76 @@ struct MainWindowView: View {
 
             Spacer()
 
-            if !timerViewModel.isIdle && state.section != .focus {
-                sessionStatus(collapsed: collapsed)
-                    .transition(.opacity)
+            if state.section != .focus {
+                SidebarSessionStatus(viewModel: timerViewModel, theme: theme, isCollapsed: collapsed) {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        state.section = .focus
+                    }
+                }
             }
         }
         .padding(.horizontal, collapsed ? 10 : 12)
         .padding(.vertical, 14)
-        .animation(.easeInOut(duration: 0.15), value: timerViewModel.isIdle)
     }
 
-    /// Live timer readout while another section is shown; clicking returns to Focus.
-    private func sessionStatus(collapsed: Bool) -> some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                state.section = .focus
+    /// The app has no main menu, so ⌘W is provided here.
+    private var closeShortcut: some View {
+        Button("Close", action: onClose)
+            .keyboardShortcut("w", modifiers: .command)
+            .hidden()
+    }
+}
+
+// MARK: - Sidebar Session Status
+
+/// Live timer readout while another section is shown; clicking returns to Focus.
+/// The only part of the shell that observes the timer.
+private struct SidebarSessionStatus: View {
+    @ObservedObject var viewModel: TimerViewModel
+    @ObservedObject var theme: ThemeManager
+    let isCollapsed: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Group {
+            if !viewModel.isIdle {
+                button
+                    .transition(.opacity)
             }
-        } label: {
+        }
+        .animation(.easeInOut(duration: 0.15), value: viewModel.isIdle)
+    }
+
+    private var button: some View {
+        Button(action: action) {
             Group {
-                if collapsed {
+                if isCollapsed {
                     VStack(spacing: 5) {
-                        Text(timerViewModel.engine.formattedTime)
+                        Text(viewModel.engine.formattedTime)
                             .font(theme.currentFont.font(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(theme.colors.text)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
-                        TimerProgressLine(viewModel: timerViewModel, theme: theme, height: 2)
+                        TimerProgressLine(viewModel: viewModel, theme: theme, height: 2)
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 6)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(timerViewModel.modeLabel)
+                            Text(viewModel.modeLabel)
                                 .font(theme.currentFont.font(size: 9, weight: .semibold))
                                 .tracking(1.5)
                                 .foregroundColor(theme.colors.textSecondary)
                             Spacer()
-                            Text(timerViewModel.engine.formattedTime)
+                            Text(viewModel.engine.formattedTime)
                                 .font(theme.currentFont.font(size: 13, weight: .semibold, design: .rounded))
                                 .foregroundColor(theme.colors.text)
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
-                        TimerProgressLine(viewModel: timerViewModel, theme: theme, height: 2)
+                        TimerProgressLine(viewModel: viewModel, theme: theme, height: 2)
                     }
                     .padding(10)
                 }
@@ -191,14 +219,7 @@ struct MainWindowView: View {
         }
         .buttonStyle(.plain)
         .hoverEffect()
-        .help("\(timerViewModel.modeLabel.capitalized) session — back to Focus")
-    }
-
-    /// The app has no main menu, so ⌘W is provided here.
-    private var closeShortcut: some View {
-        Button("Close", action: onClose)
-            .keyboardShortcut("w", modifiers: .command)
-            .hidden()
+        .help("\(viewModel.modeLabel.capitalized) session — back to Focus")
     }
 }
 

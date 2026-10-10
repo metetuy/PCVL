@@ -7,15 +7,6 @@ import UserNotifications
 class TimerViewModel: ObservableObject {
     @Published private(set) var engine = TimerEngine()
     @Published private(set) var isBreak: Bool = false
-    @Published private(set) var todayStats = TodayStats()
-
-    /// Today's recorded focus totals, cached so the focus screen can show them
-    /// without querying the store on every tick.
-    struct TodayStats {
-        var focusSeconds = 0
-        var sessions = 0
-        var streak = 0
-    }
 
     enum AdjustableDuration {
         case work
@@ -33,6 +24,17 @@ class TimerViewModel: ObservableObject {
             case .work: return 5...480
             case .breakTime: return 1...30
             }
+        }
+
+        /// Quick picks offered in the status item's context menu, always including the
+        /// default; the full range is reachable from the settings steppers.
+        var menuPresets: [Int] {
+            let presets: [Int]
+            switch self {
+            case .work: presets = [15, 20, 25, 30, 45, 50, 60, 90, 120]
+            case .breakTime: presets = [1, 3, 5, 10, 15, 20, 30]
+            }
+            return presets.filter(bounds.contains)
         }
 
         var defaultMinutes: Int {
@@ -53,7 +55,6 @@ class TimerViewModel: ObservableObject {
     private var timer: Timer?
     private var sessionStartDate: Date?
     private var statisticsManager: StatisticsManager?
-    private var statsObserver: AnyCancellable?
     /// Wall clock, replaceable in tests.
     private let now: () -> Date
     var menuBarUpdater: ((String, Bool) -> Void)?
@@ -68,20 +69,6 @@ class TimerViewModel: ObservableObject {
 
     func setStatisticsManager(_ manager: StatisticsManager) {
         self.statisticsManager = manager
-        statsObserver = manager.objectWillChange
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.refreshTodayStats() }
-        refreshTodayStats()
-    }
-
-    func refreshTodayStats() {
-        guard let statisticsManager else { return }
-        let today = statisticsManager.todayFocusSummary()
-        todayStats = TodayStats(
-            focusSeconds: today.seconds,
-            sessions: today.sessions,
-            streak: statisticsManager.currentStreak()
-        )
     }
 
     // MARK: - Durations (persisted, in seconds)
@@ -153,15 +140,9 @@ class TimerViewModel: ObservableObject {
         return currentPhase
     }
 
-    /// One-line summary for the focus screen footer, including the session in progress.
-    var todaySummaryText: String {
-        let inProgress = !isBreak && (isRunning || isPaused) ? engine.elapsedSeconds : 0
-        let seconds = todayStats.focusSeconds + inProgress
-        let h = seconds / 3600
-        let m = (seconds % 3600) / 60
-        let focus = h > 0 ? "\(h)h \(m)m" : "\(m)m"
-        let sessions = todayStats.sessions
-        return "Today \(focus) · \(sessions) session\(sessions == 1 ? "" : "s") · \(todayStats.streak)-day streak"
+    /// Focus time of the session in progress, not yet recorded in the store.
+    var inProgressFocusSeconds: Int {
+        !isBreak && (isRunning || isPaused) ? engine.elapsedSeconds : 0
     }
 
     /// Duration of the phase that follows the current countdown, for the "up next" hint.
