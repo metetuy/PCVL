@@ -96,6 +96,8 @@ struct StatsSessionItem: Identifiable {
     let date: Date
     let duration: Int
     let type: SessionType
+    /// The task the session counted toward, if any.
+    var taskID: UUID? = nil
 
     var isFocus: Bool { type != .shortBreak }
 }

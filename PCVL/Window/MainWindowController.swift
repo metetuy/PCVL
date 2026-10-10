@@ -93,6 +93,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     private let statsSummary: StatsSummaryViewModel
     private let tasksViewModel: TasksViewModel
     let analyticsViewModel: AnalyticsViewModel
+    let taskAnalyticsViewModel: TaskAnalyticsViewModel
     /// Called once the window has closed because the user switched to the panel.
     private let onSwitchedToPanel: () -> Void
 
@@ -111,6 +112,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         statsSummary: StatsSummaryViewModel,
         tasksViewModel: TasksViewModel,
         analyticsViewModel: AnalyticsViewModel,
+        taskAnalyticsViewModel: TaskAnalyticsViewModel,
         onSwitchedToPanel: @escaping () -> Void
     ) {
         self.timerViewModel = timerViewModel
@@ -119,6 +121,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         self.statsSummary = statsSummary
         self.tasksViewModel = tasksViewModel
         self.analyticsViewModel = analyticsViewModel
+        self.taskAnalyticsViewModel = taskAnalyticsViewModel
         self.onSwitchedToPanel = onSwitchedToPanel
         super.init()
         // @Published emits before the change, so the new section comes from the value.
@@ -129,7 +132,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     /// Analytics only recomputes while its screen is shown in an open window.
     private func updateAnalyticsActivity(section: WindowSection? = nil) {
-        analyticsViewModel.isActive = isOpen && (section ?? state.section) == .analytics
+        let isActive = isOpen && (section ?? state.section) == .analytics
+        analyticsViewModel.isActive = isActive
+        taskAnalyticsViewModel.isActive = isActive
     }
 
     /// Window mode is active while the window is on screen or minimized to the Dock.
@@ -214,6 +219,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         analyticsViewModel.isActive = false
+        taskAnalyticsViewModel.isActive = false
     }
 
     func windowDidExitFullScreen(_ notification: Notification) {
@@ -257,6 +263,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             summary: statsSummary,
             tasks: tasksViewModel,
             analytics: analyticsViewModel,
+            taskAnalytics: taskAnalyticsViewModel,
             onToggleFullScreen: { [weak self] in self?.toggleFullScreen() },
             onSwitchToPanel: { [weak self] in self?.switchToPanel() },
             onClose: { [weak self] in self?.close() }

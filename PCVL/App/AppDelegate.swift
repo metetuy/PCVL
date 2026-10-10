@@ -19,6 +19,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var tasksViewModel = TasksViewModel(taskManager: taskManager, statsManager: statsManager, timer: viewModel)
     private lazy var statsSummary = StatsSummaryViewModel(statsManager: statsManager, settings: settings)
     private lazy var analyticsViewModel = AnalyticsViewModel(statsManager: statsManager, settings: settings)
+    private lazy var taskAnalyticsViewModel = TaskAnalyticsViewModel(statsManager: statsManager, taskManager: taskManager)
     private lazy var windowController = MainWindowController(
         timerViewModel: viewModel,
         themeManager: themeManager,
@@ -26,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statsSummary: statsSummary,
         tasksViewModel: tasksViewModel,
         analyticsViewModel: analyticsViewModel,
+        taskAnalyticsViewModel: taskAnalyticsViewModel,
         onSwitchedToPanel: { [weak self] in self?.showPanelAfterWindowMode() }
     )
     private lazy var themeFlyout = ThemeFlyoutController(themeManager: themeManager)

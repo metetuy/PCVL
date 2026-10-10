@@ -67,6 +67,8 @@ struct SessionRow: View {
     let session: StatsSessionItem
     @ObservedObject var theme: ThemeManager
     var scale: CGFloat = 1
+    /// The task the session counted toward, shown after the date.
+    var taskTitle: String?
 
     var body: some View {
         HStack(spacing: 7 * scale) {
@@ -78,6 +80,15 @@ struct SessionRow: View {
                 .font(theme.currentFont.font(size: 10 * scale))
                 .foregroundColor(theme.colors.text)
                 .lineLimit(1)
+                .layoutPriority(1)
+
+            if let taskTitle {
+                Text(taskTitle)
+                    .font(theme.currentFont.font(size: 9 * scale, weight: .medium))
+                    .foregroundColor(theme.colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
 
             Spacer()
 

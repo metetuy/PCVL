@@ -2,11 +2,14 @@ import SwiftUI
 
 // MARK: - Analytics Screen
 
-/// Detailed statistics for the window, raw data first: totals, the main chart with
-/// the session list beside it, distributions, and derived insights at the bottom.
+/// Detailed statistics for the window. Tasks first (all-time totals per task), then
+/// time, raw data first: totals, the main chart with the session list beside it,
+/// distributions, and derived insights at the bottom.
 struct AnalyticsScreen: View {
     @ObservedObject var viewModel: AnalyticsViewModel
+    @ObservedObject var tasks: TaskAnalyticsViewModel
     @ObservedObject var theme: ThemeManager
+    let onShowTasks: () -> Void
 
     @State private var hoveredBucketID: Int?
     @State private var hoveredHour: Int?
@@ -25,6 +28,12 @@ struct AnalyticsScreen: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
+                    TaskAnalyticsSection(viewModel: tasks, theme: theme, isWide: wide, onShowTasks: onShowTasks)
+
+                    Divider()
+                        .background(theme.colors.ringTrack)
+                        .padding(.vertical, 8)
+
                     header
                     kpiGrid(width: geo.size.width)
 
@@ -35,7 +44,7 @@ struct AnalyticsScreen: View {
                             Color.clear.frame(width: sessionsWidth)
                         }
                         .overlay(alignment: .topTrailing) {
-                            SessionsCard(sessions: snapshot.sessions, theme: theme, scale: s)
+                            sessionsCard
                                 .frame(width: sessionsWidth)
                         }
 
@@ -47,7 +56,7 @@ struct AnalyticsScreen: View {
                         }
                     } else {
                         mainChartCard
-                        SessionsCard(sessions: snapshot.sessions, theme: theme, scale: s)
+                        sessionsCard
                             .frame(height: 280)
                         HStack(alignment: .top, spacing: 14) {
                             hourlyCard
@@ -70,6 +79,17 @@ struct AnalyticsScreen: View {
             hoveredHour = nil
             hoveredWeekday = nil
         }
+    }
+
+    private var sessionsCard: some View {
+        SessionsCard(
+            sessions: snapshot.sessions,
+            tasks: tasks.tasks,
+            taskTitle: tasks.title(for:),
+            onAssign: tasks.assign(_:to:),
+            theme: theme,
+            scale: s
+        )
     }
 
     // MARK: - Header
@@ -420,6 +440,10 @@ private struct BreakdownCard: View {
 /// height it is given.
 private struct SessionsCard: View {
     let sessions: [StatsSessionItem]
+    /// Tasks a focus session can be moved to (right click on a row).
+    let tasks: [TaskItem]
+    let taskTitle: (UUID?) -> String?
+    let onAssign: (StatsSessionItem, UUID?) -> Void
     @ObservedObject var theme: ThemeManager
     var scale: CGFloat = 1
 
@@ -446,7 +470,12 @@ private struct SessionsCard: View {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
-                            SessionRow(session: session, theme: theme, scale: scale)
+                            SessionRow(session: session, theme: theme, scale: scale, taskTitle: taskTitle(session.taskID))
+                                .contextMenu {
+                                    if session.isFocus && !tasks.isEmpty {
+                                        taskMenu(for: session)
+                                    }
+                                }
                             if index < sessions.count - 1 {
                                 Divider().background(theme.colors.ringTrack)
                             }
@@ -459,5 +488,27 @@ private struct SessionsCard: View {
         .padding(14)
         .frame(maxHeight: .infinity, alignment: .top)
         .cardBackground(theme, radius: 10)
+    }
+
+    /// Moves one focus session to another task, or off any task.
+    @ViewBuilder
+    private func taskMenu(for session: StatsSessionItem) -> some View {
+        Menu("Task") {
+            menuItem("No Task", isOn: session.taskID == nil) { onAssign(session, nil) }
+            Divider()
+            ForEach(tasks) { task in
+                menuItem(task.title, isOn: session.taskID == task.id) { onAssign(session, task.id) }
+            }
+        }
+    }
+
+    private func menuItem(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if isOn {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
     }
 }

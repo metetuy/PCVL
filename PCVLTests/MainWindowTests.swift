@@ -28,17 +28,15 @@ struct MainWindowTests {
         }
         let settings = AppSettings(statsManager: stats)
         let timer = TimerViewModel()
+        let taskManager = TaskManager(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!)
         let controller = MainWindowController(
             timerViewModel: timer,
             themeManager: ThemeManager(),
             settings: settings,
             statsSummary: StatsSummaryViewModel(statsManager: stats, settings: settings),
-            tasksViewModel: TasksViewModel(
-                taskManager: TaskManager(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!),
-                statsManager: stats,
-                timer: timer
-            ),
+            tasksViewModel: TasksViewModel(taskManager: taskManager, statsManager: stats, timer: timer),
             analyticsViewModel: AnalyticsViewModel(statsManager: stats, settings: settings),
+            taskAnalyticsViewModel: TaskAnalyticsViewModel(statsManager: stats, taskManager: taskManager),
             onSwitchedToPanel: {}
         )
         controller.show(section: .focus)

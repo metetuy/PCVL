@@ -137,6 +137,13 @@ enum StatsFormat {
         return "\(shortDate(date)), \(time)"
     }
 
+    /// A total in hours and minutes, e.g. "52h 10m" or "40m" — never rolls over into days.
+    static func hoursMinutes(_ seconds: Int) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+
     /// Exact session length, e.g. "1h 5m", "24m 10s" or "45s".
     static func sessionDuration(_ seconds: Int) -> String {
         let h = seconds / 3600

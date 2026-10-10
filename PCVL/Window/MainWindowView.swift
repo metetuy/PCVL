@@ -15,6 +15,7 @@ struct MainWindowView: View {
     let summary: StatsSummaryViewModel
     let tasks: TasksViewModel
     let analytics: AnalyticsViewModel
+    let taskAnalytics: TaskAnalyticsViewModel
     let onToggleFullScreen: () -> Void
     let onSwitchToPanel: () -> Void
     let onClose: () -> Void
@@ -74,7 +75,11 @@ struct MainWindowView: View {
         case .tasks:
             TasksScreen(viewModel: tasks, timerViewModel: timerViewModel, theme: theme)
         case .analytics:
-            AnalyticsScreen(viewModel: analytics, theme: theme)
+            AnalyticsScreen(viewModel: analytics, tasks: taskAnalytics, theme: theme) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    state.section = .tasks
+                }
+            }
         case .settings:
             SettingsScreen(timerViewModel: timerViewModel, theme: theme, settings: settings)
         }

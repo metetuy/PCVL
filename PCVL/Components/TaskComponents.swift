@@ -146,14 +146,7 @@ struct TaskRow: View {
             if isCompact {
                 title
                 Spacer(minLength: 6 * scale)
-                // The actions take the time's place while hovered, so nothing shifts.
-                if isEditing {
-                    editActions
-                } else if showsActions {
-                    actions
-                } else {
-                    totals
-                }
+                trailingSlot
             } else {
                 VStack(alignment: .leading, spacing: 3 * scale) {
                     title
@@ -196,6 +189,22 @@ struct TaskRow: View {
     }
 
     private var showsActions: Bool { isHovering && !isEditing }
+
+    /// Compact rows: the time, with the actions drawn over it while hovered or
+    /// renaming. An overlay never changes the row's size, and the slot is always
+    /// wide enough for the two buttons, so hovering moves nothing.
+    private var trailingSlot: some View {
+        totals
+            .opacity(isEditing || showsActions ? 0 : 1)
+            .frame(minWidth: 38 * scale, alignment: .trailing)
+            .overlay(alignment: .trailing) {
+                if isEditing {
+                    editActions
+                } else if showsActions {
+                    actions
+                }
+            }
+    }
 
     /// Rename and delete, shown while the row is hovered.
     private var actions: some View {
@@ -264,8 +273,10 @@ struct TaskRow: View {
                 .background(theme.colors.background.opacity(0.6))
                 .clipShape(RoundedRectangle(cornerRadius: 4 * scale))
                 .overlay(RoundedRectangle(cornerRadius: 4 * scale).stroke(theme.colors.accent.opacity(0.5), lineWidth: 1))
-                // Offsets the padding so the text stays where the title was.
+                // Offsets the padding so the text stays where the title was and the
+                // row keeps its height.
                 .padding(.horizontal, -5 * scale)
+                .padding(.vertical, -2 * scale)
                 .focused($isTitleFocused)
                 .onAppear {
                     draftTitle = task.title

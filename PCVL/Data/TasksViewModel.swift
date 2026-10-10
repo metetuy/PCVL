@@ -90,8 +90,6 @@ final class TasksViewModel: ObservableObject {
     }
 
     static func durationText(_ seconds: Int) -> String {
-        let h = seconds / 3600
-        let m = (seconds % 3600) / 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        StatsFormat.hoursMinutes(seconds)
     }
 }

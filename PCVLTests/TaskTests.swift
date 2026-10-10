@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import PCVL
 
@@ -161,5 +162,64 @@ struct TaskTests {
     @Test func blankTitlesAreIgnored() {
         tasks.addTask("   ")
         #expect(!tasks.hasTasks)
+    }
+
+    // MARK: - Assigning
+
+    @Test func untaggedFocusSessionsCanBeAssignedToATask() throws {
+        // Recorded before any task existed: two focus sessions and a break.
+        runFocus(600)
+        timer.start()
+        clock.advance(300)
+        timer.skipPhase()
+        clock.advance(60)
+        timer.skipPhase()
+
+        tasks.addTask("Catch up")
+        let id = try #require(tasks.activeTaskID)
+        #expect(stats.assignUntaggedSessions(toTask: id) == 2)
+
+        let caughtUp = try task(id)
+        #expect(caughtUp.focusSeconds == 900, "updated through the store's change notification")
+        #expect(caughtUp.sessions == 2)
+        let breaks = stats.sessions(from: .distantPast, to: .distantFuture).filter { $0.sessionType == .shortBreak }
+        #expect(breaks.allSatisfy { $0.task == nil }, "breaks never count toward a task")
+        #expect(stats.assignUntaggedSessions(toTask: id) == 0)
+    }
+
+    @Test func aSingleSessionCanMoveBetweenTasks() throws {
+        tasks.addTask("A")
+        tasks.addTask("B")
+        let a = try #require(tasks.activeTaskID)
+        let b = try #require(tasks.openTasks.last?.id)
+        runFocus(420)
+        let session = try #require(stats.sessions(from: .distantPast, to: .distantFuture).first)
+
+        stats.assignSession(session.persistentModelID, toTask: b)
+        #expect(try task(a).focusSeconds == 0)
+        #expect(try task(b).focusSeconds == 420)
+
+        stats.assignSession(session.persistentModelID, toTask: nil)
+        #expect(try task(b).focusSeconds == 0)
+        #expect(stats.focusSessionItems().map(\.taskID) == [nil])
+    }
+
+    @Test func taskAnalyticsSummarizeAllTimeTotals() throws {
+        runFocus(1200) // before tasks
+        tasks.addTask("Write")
+        let id = try #require(tasks.activeTaskID)
+        runFocus(600)
+        runFocus(300)
+
+        let analytics = TaskAnalyticsViewModel(statsManager: stats, taskManager: taskManager)
+        analytics.isActive = true
+        #expect(analytics.summaries.map(\.title) == ["Write", "No task"])
+        #expect(analytics.selected?.taskID == id, "the largest task is selected first")
+        #expect(analytics.totalFocusSeconds == 2100)
+        #expect(analytics.progress.map(\.totalSeconds) == [0, 600, 900])
+
+        analytics.assignUntagged(to: id)
+        #expect(analytics.summaries.map(\.title) == ["Write"])
+        #expect(analytics.selected?.totalSeconds == 2100)
     }
 }

@@ -167,7 +167,15 @@ final class StatisticsManager {
             from: fetchStart.addingTimeInterval(-StatsAnalyzer.spilloverLookback),
             to: period.end
         )
-        .map { StatsSessionItem(id: $0.persistentModelID, date: $0.date, duration: $0.duration, type: $0.sessionType) }
+        .map {
+            StatsSessionItem(
+                id: $0.persistentModelID,
+                date: $0.date,
+                duration: $0.duration,
+                type: $0.sessionType,
+                taskID: $0.task?.id
+            )
+        }
         return analyzer.snapshot(
             range: range,
             offset: offset,
@@ -176,6 +184,49 @@ final class StatisticsManager {
             previousSessions: range.supportsNavigation ? records : nil,
             focusDays: focusDays()
         )
+    }
+}
+
+// MARK: - Tasks
+
+extension StatisticsManager {
+    /// Every focus session with its task, for all-time task totals. Unlike the
+    /// period snapshots nothing is split by hour or day: a task's time is simply
+    /// the sum of its sessions.
+    func focusSessionItems() -> [TaskSessionItem] {
+        let shortBreak = SessionType.shortBreak.rawValue
+        let descriptor = FetchDescriptor<SessionRecord>(
+            predicate: #Predicate { $0.type != shortBreak },
+            sortBy: [SortDescriptor(\.date)]
+        )
+        let sessions = (try? modelContext.fetch(descriptor)) ?? []
+        return sessions.map { TaskSessionItem(date: $0.date, duration: $0.duration, taskID: $0.task?.id) }
+    }
+
+    /// Links one focus session to a task, or with nil removes its task.
+    func assignSession(_ id: PersistentIdentifier, toTask taskID: UUID?) {
+        guard let session: SessionRecord = modelContext.registeredModel(for: id),
+              session.sessionType != .shortBreak else { return }
+        session.task = taskID.flatMap { modelContext.focusTask(id: $0) }
+        try? modelContext.save()
+        didChange.send()
+    }
+
+    /// Links every focus session that has no task yet (e.g. recorded before tasks
+    /// existed) to a task. Returns how many were assigned.
+    @discardableResult
+    func assignUntaggedSessions(toTask taskID: UUID) -> Int {
+        guard let task = modelContext.focusTask(id: taskID) else { return 0 }
+        let shortBreak = SessionType.shortBreak.rawValue
+        let descriptor = FetchDescriptor<SessionRecord>(predicate: #Predicate { $0.type != shortBreak })
+        let untagged = ((try? modelContext.fetch(descriptor)) ?? []).filter { $0.task == nil }
+        guard !untagged.isEmpty else { return 0 }
+        for session in untagged {
+            session.task = task
+        }
+        try? modelContext.save()
+        didChange.send()
+        return untagged.count
     }
 }
 

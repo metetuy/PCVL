@@ -28,6 +28,8 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 - **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit; only recomputes while active (set by MainWindowController), otherwise marks itself stale
 - **TaskManager**: SwiftData CRUD for `FocusTask` (same container as sessions) and the current task (`activeTaskID`, persisted); clears it when that task is checked off or deleted
 - **TasksViewModel**: ObservableObject for every task surface (tasks screen, task picker, context menu) — open/done lists with totals, current task, `isSelectionLocked` while a focus session is in progress
+- **TaskAnalyzer**: Pure all-time aggregation per task (totals, sessions, avg/longest, first/last worked, active days, share, running total) — no periods, no hour splitting
+- **TaskAnalyticsViewModel**: ObservableObject for the analytics screen's tasks section and assigning sessions to tasks; like AnalyticsViewModel only recomputes while active
 - **StatsSummaryViewModel**: Today + this week, shared by the panel's stats tab and the focus screen footer — the single source for "today"
 - **SwipeMonitor** (in PopoverView): NSEvent monitor for horizontal trackpad swipe to switch tabs
 
@@ -45,7 +47,8 @@ PCVL/
 │   ├── MainWindowView.swift       (collapsible sidebar, top bar: sidebar / full screen / panel)
 │   ├── FocusScreen.swift          (clean, scalable timer + task picker)
 │   ├── TasksScreen.swift          (add, pick current, check off, rename, delete; totals per task)
-│   ├── AnalyticsScreen.swift      (raw data first: totals, chart + sessions, distributions, insights last)
+│   ├── AnalyticsScreen.swift      (tasks section first, then time: totals, chart + sessions, distributions, insights last)
+│   ├── TaskAnalyticsSection.swift (all-time total per task + selected task detail with running total chart)
 │   └── SettingsScreen.swift       (durations, theme previews, font, panel behavior, data)
 ├── Views/                         (menu bar panel, 300x190)
 │   ├── PopoverView.swift          (tab shell: timer/stats/settings + swipe navigation)
@@ -71,13 +74,15 @@ PCVL/
 │   ├── TaskManager.swift          (SwiftData FocusTask, TaskItem, current task)
 │   ├── TasksViewModel.swift       (task state for all surfaces)
 │   ├── StatsAnalytics.swift       (StatsRange, StatsTimeUnit, StatsSnapshot, StatsAnalyzer)
+│   ├── TaskAnalytics.swift        (TaskSessionItem, TaskSummary, TaskAnalyzer)
+│   ├── TaskAnalyticsViewModel.swift(analytics tasks section state + assigning)
 │   ├── StatsFormatting.swift      (StatsFormat display strings)
 │   ├── AnalyticsViewModel.swift   (window analytics state)
 │   └── StatsSummaryViewModel.swift(panel stats state)
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
-├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift
 └── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
 ```
 
@@ -132,6 +137,12 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - `deleteAllSessions` deletes records one by one — a batch delete bypasses the context and leaves loaded tasks listing deleted sessions
 - Rows (shared by panel and window): click = make current, circle = check off; hovering shows rename (pencil) and delete (trash) — in compact panel rows they replace the time; renaming shows save (✓) / cancel (✕), Return / Esc do the same; right click has the same actions
 - Panel: tasks tab (open tasks only, compact rows); task chip in the timer's top row (only once tasks exist) whose "Manage Tasks…" switches to that tab; context menu: "Task:" submenu. Done tasks are shown in the window only
+
+### Task analytics
+- Analytics opens with Tasks (all time): every task's total = plain sum of its sessions, independent of the selected range and never split by hour/day; "No task" collects untagged focus (e.g. sessions from before tasks)
+- Selecting a task shows sessions, avg, longest, active days, first/last worked and a running-total chart
+- Assigning: "No task" detail → "Assign all to a task…" (confirmation) via `StatisticsManager.assignUntaggedSessions(toTask:)`; any focus session in the time section's list → right click → Task ▸ (`assignSession(_:toTask:)`). Breaks are never assigned
+- The time section below is unchanged; session rows show their task
 
 ### Desktop window
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"
