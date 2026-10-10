@@ -16,7 +16,7 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 
 ## App architecture
 - **AppDelegate**: NSStatusItem + NSPanel setup, event monitors, right-click context menu, font registration, menu bar icon updates, panel ↔ window transitions, observes `alwaysOnTop` / `showTimerInMenuBar` defaults
-- **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen)
+- **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed
 - **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects
 - **TimerViewModel**: ObservableObject, drives all timer state, session recording, notifications
 - **ThemeManager**: Color schemes + font management, persisted via @AppStorage
@@ -33,10 +33,10 @@ PCVL/
 │   ├── PCVLApp.swift              (entry point, delegates to AppDelegate)
 │   └── AppDelegate.swift          (menu bar icon, NSPanel, event handling, context menu)
 ├── Window/                        (optional desktop window, one file per screen)
-│   ├── MainWindowController.swift (NSWindow setup, WindowSection, WindowNavigation)
-│   ├── MainWindowView.swift       (sidebar shell, session status, collapse to menu bar)
+│   ├── MainWindowController.swift (NSWindow setup + delegate, WindowSection, WindowState)
+│   ├── MainWindowView.swift       (collapsible sidebar, top bar: sidebar / full screen / panel)
 │   ├── FocusScreen.swift          (clean, scalable timer)
-│   ├── AnalyticsScreen.swift      (ranges, charts, insights, sessions)
+│   ├── AnalyticsScreen.swift      (raw data first: totals, chart + sessions, distributions, insights last)
 │   └── SettingsScreen.swift       (durations, theme previews, font, panel behavior, data)
 ├── Views/                         (menu bar panel, 300x190)
 │   ├── PopoverView.swift          (tab shell: timer/stats/settings + swipe navigation)
@@ -104,9 +104,12 @@ PCVL/
 - Charts use Swift Charts (system framework) with hover readouts
 
 ### Desktop window
-- Opened from the panel's hover expand handle (on the matching section) or "Open PCVL Window" in the context menu; the panel closes
-- Titled, resizable, `.fullScreenPrimary`, min 720x500, frame autosaved as "PCVLMainWindow"
-- Sidebar: Focus / Analytics / Settings (⌘1–3), live session status, "Collapse to menu bar" (closes window, shows panel); ⌘W closes
+- Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"
+- Entered from the panel's hover expand handle (matching section) or the context menu; always via `AppDelegate.enterWindowMode`, which closes the panel first
+- Titled, resizable, `.fullScreenPrimary`, empty `.unifiedCompact` toolbar (taller title bar), min 720x500, frame autosaved as "PCVLMainWindow"
+- Top bar: sidebar toggle (⌃⌘S) left; full screen toggle (⌃⌘F) and "switch to panel" right
+- Full screen is an extension of window mode: entering collapses the sidebar to icons, exiting restores it; closing or switching to the panel exits full screen first
+- Sidebar: Focus / Analytics / Settings (⌘1–3), live session status; collapsible to icons (windowed preference persisted as `windowSidebarCollapsed`); ⌘W closes
 - Focus screen: Space starts/pauses, scroll over the time adjusts duration when idle
 
 ### Tab navigation

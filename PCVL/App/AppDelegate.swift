@@ -15,7 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         themeManager: themeManager,
         statsManager: statsManager,
         analyticsViewModel: analyticsViewModel,
-        onCollapse: { [weak self] in self?.collapseToPanel() }
+        onSwitchedToPanel: { [weak self] in self?.showPanelAfterWindowMode() }
     )
     private var defaultsObservers = Set<AnyCancellable>()
 
@@ -51,7 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             themeManager: themeManager,
             statsManager: statsManager,
             statsSummary: statsSummary,
-            onExpand: { [weak self] tab in self?.openWindow(section: WindowSection(tab)) },
+            onExpand: { [weak self] tab in self?.enterWindowMode(section: WindowSection(tab)) },
             onShowThemePicker: { [weak self] anchorRect in self?.showThemePicker(anchorRect: anchorRect) }
         )
 
@@ -107,9 +107,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let event = NSApp.currentEvent else { return }
         if event.type == .rightMouseUp {
             showContextMenu()
+        } else if windowController.isOpen {
+            // In window mode the panel is disabled; the icon brings the window back.
+            windowController.bringToFront()
         } else {
             togglePanel()
         }
+    }
+
+    /// Relaunching the running app (Finder, Spotlight) shows whichever mode is active.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if windowController.isOpen {
+            windowController.bringToFront()
+        } else if !panelWindow.isVisible {
+            showPanel()
+        }
+        return false
     }
 
     private func togglePanel() {
@@ -131,22 +144,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Window
 
-    /// Panel → window: the panel steps aside and the window opens on the matching section.
-    private func openWindow(section: WindowSection) {
-        // Deferred: invoked from a SwiftUI button action in the panel.
+    /// Panel → window. Every way into the window goes through here so the panel is
+    /// always put away first (it stays disabled while the window is open).
+    private func enterWindowMode(section: WindowSection) {
+        // Deferred: may be invoked from a SwiftUI button action in the panel.
         DispatchQueue.main.async { [weak self] in
             self?.closePanel()
             self?.windowController.show(section: section)
         }
     }
 
-    /// Window → panel.
-    private func collapseToPanel() {
-        DispatchQueue.main.async { [weak self] in
-            self?.windowController.close()
-            self?.showPanel()
-            self?.viewModel.updateMenuBarIcon()
-        }
+    /// Window → panel, once the window (and its full screen Space, if any) has closed.
+    private func showPanelAfterWindowMode() {
+        showPanel()
+        viewModel.updateMenuBarIcon()
     }
 
     private var shouldPreventAutoClose: Bool {
@@ -297,9 +308,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
 
-        let openWindowItem = NSMenuItem(title: "Open PCVL Window", action: #selector(openWindowFromMenu), keyEquivalent: "")
-        openWindowItem.target = self
-        menu.addItem(openWindowItem)
+        if windowController.isOpen {
+            let showItem = NSMenuItem(title: "Show PCVL Window", action: #selector(openWindowFromMenu), keyEquivalent: "")
+            showItem.target = self
+            menu.addItem(showItem)
+
+            let panelItem = NSMenuItem(title: "Switch to Menu Bar Panel", action: #selector(switchToPanelFromMenu), keyEquivalent: "")
+            panelItem.target = self
+            menu.addItem(panelItem)
+        } else {
+            let openItem = NSMenuItem(title: "Open PCVL Window", action: #selector(openWindowFromMenu), keyEquivalent: "")
+            openItem.target = self
+            menu.addItem(openItem)
+        }
 
         menu.addItem(NSMenuItem.separator())
 
@@ -422,7 +443,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openWindowFromMenu() {
-        windowController.show(section: .focus)
+        if windowController.isOpen {
+            windowController.bringToFront()
+        } else {
+            enterWindowMode(section: .focus)
+        }
+    }
+
+    @objc private func switchToPanelFromMenu() {
+        windowController.switchToPanel()
     }
 
     @objc private func toggleAlwaysOnTop() {

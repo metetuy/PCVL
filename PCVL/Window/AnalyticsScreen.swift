@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Analytics Screen
 
-/// Detailed statistics for the window: any range from a day to all time, period
-/// navigation, distributions, insights and the full session list.
+/// Detailed statistics for the window, raw data first: totals, the main chart with
+/// the session list beside it, distributions, and derived insights at the bottom.
 struct AnalyticsScreen: View {
     @ObservedObject var viewModel: AnalyticsViewModel
     @ObservedObject var theme: ThemeManager
@@ -13,40 +13,53 @@ struct AnalyticsScreen: View {
     @State private var hoveredWeekday: Int?
 
     private let s: CGFloat = 1.2
-    /// Content width above which charts and the side column sit next to each other.
-    private let twoColumnWidth: CGFloat = 860
+    /// Content width above which the session list sits beside the main chart.
+    private let wideWidth: CGFloat = 860
+    private let sessionsWidth: CGFloat = 330
 
     private var snapshot: StatsSnapshot { viewModel.snapshot }
 
     var body: some View {
         GeometryReader { geo in
-            let wide = geo.size.width >= twoColumnWidth
+            let wide = geo.size.width >= wideWidth
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     header
-                    kpiGrid
+                    kpiGrid(width: geo.size.width)
 
                     if wide {
+                        // The chart sets the row height; the session list fills it and scrolls.
                         HStack(alignment: .top, spacing: 14) {
-                            chartsColumn
-                                .frame(maxWidth: .infinity)
-                            VStack(spacing: 14) {
-                                InsightsCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s)
-                                BreakdownCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s)
-                                SessionsCard(sessions: snapshot.sessions, limit: 60, theme: theme, scale: s)
-                            }
-                            .frame(width: 330)
+                            mainChartCard
+                            Color.clear.frame(width: sessionsWidth)
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            SessionsCard(sessions: snapshot.sessions, theme: theme, scale: s)
+                                .frame(width: sessionsWidth)
+                        }
+
+                        HStack(alignment: .top, spacing: 14) {
+                            hourlyCard
+                            weekdayCard
+                            BreakdownCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s)
+                                .frame(width: sessionsWidth)
                         }
                     } else {
-                        chartsColumn
-                        InsightsCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s, columns: 3)
+                        mainChartCard
+                        SessionsCard(sessions: snapshot.sessions, theme: theme, scale: s)
+                            .frame(height: 280)
+                        HStack(alignment: .top, spacing: 14) {
+                            hourlyCard
+                            weekdayCard
+                        }
                         BreakdownCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s)
-                        SessionsCard(sessions: snapshot.sessions, limit: 30, theme: theme, scale: s)
                     }
+
+                    InsightsCard(snapshot: snapshot, unit: viewModel.unit, theme: theme, scale: s, columns: wide ? 5 : 3)
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 24)
                 .frame(maxWidth: 1500)
                 .frame(maxWidth: .infinity)
@@ -153,9 +166,11 @@ struct AnalyticsScreen: View {
 
     // MARK: - KPIs
 
-    private var kpiGrid: some View {
+    /// Six cards in one row when there is room, otherwise wrapped into rows of three to five.
+    private func kpiGrid(width: CGFloat) -> some View {
         let unit = viewModel.unit
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
+        let columns = min(6, max(3, Int(width / 150)))
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: columns), spacing: 10) {
             StatCard(value: unit.format(snapshot.focusSeconds), label: "Total focus", theme: theme, scale: s)
             StatCard(value: "\(snapshot.focusSessionCount)", label: "Sessions", theme: theme, scale: s)
             StatCard(value: unit.format(snapshot.dailyAverageSeconds), label: "Daily average", theme: theme, scale: s)
@@ -166,16 +181,6 @@ struct AnalyticsScreen: View {
     }
 
     // MARK: - Charts
-
-    private var chartsColumn: some View {
-        VStack(spacing: 14) {
-            mainChartCard
-            HStack(alignment: .top, spacing: 14) {
-                hourlyCard
-                weekdayCard
-            }
-        }
-    }
 
     private var hoveredBucket: StatsBucket? {
         hoveredBucketID.flatMap { id in snapshot.buckets.first { $0.id == id } }
@@ -210,7 +215,7 @@ struct AnalyticsScreen: View {
                 theme: theme,
                 scale: s
             )
-            .frame(height: 240)
+            .frame(height: 260)
             .overlay {
                 if snapshot.focusSeconds == 0 {
                     secondaryText("No focus time in this period")
@@ -412,44 +417,48 @@ private struct BreakdownCard: View {
 
 // MARK: - Sessions Card
 
+/// Every session in the period, newest first, in a list that scrolls within the
+/// height it is given.
 private struct SessionsCard: View {
     let sessions: [StatsSessionItem]
-    let limit: Int
     @ObservedObject var theme: ThemeManager
     var scale: CGFloat = 1
 
     var body: some View {
-        let shown = Array(sessions.prefix(limit))
-
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 SectionHeader(title: "Sessions", theme: theme, scale: scale)
                 Spacer()
-                if sessions.count > shown.count {
-                    Text("latest \(shown.count) of \(sessions.count)")
-                        .font(theme.currentFont.font(size: 8 * scale))
+                if !sessions.isEmpty {
+                    let focus = sessions.filter(\.isFocus).count
+                    let breaks = sessions.count - focus
+                    Text("\(focus) focus · \(breaks) break\(breaks == 1 ? "" : "s")")
+                        .font(theme.currentFont.font(size: 8 * scale, weight: .medium))
                         .foregroundColor(theme.colors.textSecondary)
                 }
             }
 
-            if shown.isEmpty {
+            if sessions.isEmpty {
                 Text("No sessions in this period")
                     .font(theme.currentFont.font(size: 10 * scale))
                     .foregroundColor(theme.colors.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, session in
-                        SessionRow(session: session, theme: theme, scale: scale)
-                        if index < shown.count - 1 {
-                            Divider().background(theme.colors.ringTrack)
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                            SessionRow(session: session, theme: theme, scale: scale)
+                            if index < sessions.count - 1 {
+                                Divider().background(theme.colors.ringTrack)
+                            }
                         }
                     }
+                    .padding(.trailing, 6)
                 }
             }
         }
         .padding(14)
+        .frame(maxHeight: .infinity, alignment: .top)
         .cardBackground(theme, radius: 10)
     }
 }
