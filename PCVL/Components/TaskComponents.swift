@@ -70,6 +70,84 @@ struct TaskPicker: View {
     }
 }
 
+// MARK: - Task Add Field
+
+/// "Add a task" bar shared by the panel's tasks tab and the window's tasks screen.
+/// The dashed circle sits in the check box column of the rows below it; the add
+/// button on the right springs in while the bar is hovered. Return adds as well.
+/// The button always takes its space (only opacity and scale change), so hovering
+/// never moves or resizes the bar.
+struct TaskAddField: View {
+    @ObservedObject var viewModel: TasksViewModel
+    @ObservedObject var theme: ThemeManager
+    var scale: CGFloat = 1
+    /// Matches the rows' compact (panel) or full (window) layout.
+    var isCompact = false
+
+    @State private var title = ""
+    @State private var isHovering = false
+    @FocusState private var isFocused: Bool
+
+    private var canAdd: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        HStack(spacing: (isCompact ? 8 : 10) * scale) {
+            Image(systemName: "circle.dashed")
+                .font(theme.currentFont.font(size: 13 * scale))
+                .foregroundColor(isFocused || canAdd ? theme.colors.accent : theme.colors.textSecondary)
+                .animation(.easeInOut(duration: 0.15), value: isFocused || canAdd)
+
+            TextField("Add a task", text: $title)
+                .textFieldStyle(.plain)
+                .font(theme.currentFont.font(size: 11 * scale, weight: .medium))
+                .foregroundColor(theme.colors.text)
+                .focused($isFocused)
+                .onSubmit(add)
+
+            addButton
+        }
+        .padding(.leading, (isCompact ? 10 : 11.5) * scale)
+        .padding(.trailing, 6 * scale)
+        .padding(.vertical, 5 * scale)
+        .cardBackground(theme, radius: 8 * scale)
+        .contentShape(Rectangle())
+        .onTapGesture { isFocused = true }
+        .onHover { hovering in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    private var addButton: some View {
+        Button(action: add) {
+            Image(systemName: "plus")
+                .font(theme.currentFont.font(size: 9.5 * scale, weight: .bold))
+                .foregroundColor(canAdd ? theme.colors.background : theme.colors.textSecondary)
+                .frame(width: 20 * scale, height: 20 * scale)
+                .background(Circle().fill(canAdd ? theme.colors.accent : theme.colors.textSecondary.opacity(0.14)))
+                .contentShape(Circle())
+                .animation(.easeInOut(duration: 0.15), value: canAdd)
+        }
+        .buttonStyle(SpringButtonStyle(kind: .primary, theme: theme))
+        .disabled(!canAdd)
+        .scaleEffect(isHovering ? 1 : 0.5)
+        .opacity(isHovering ? 1 : 0)
+        .allowsHitTesting(isHovering)
+        .pointerStyle(canAdd ? .link : nil)
+        .help(canAdd ? "Add task (Return)" : "Type a task name first")
+    }
+
+    private func add() {
+        guard canAdd else { return }
+        viewModel.addTask(title)
+        title = ""
+        isFocused = true
+    }
+}
+
 // MARK: - Task List
 
 /// Card of task rows, used by the window's tasks screen and the panel's tasks tab.

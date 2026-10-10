@@ -10,10 +10,8 @@ struct TasksScreen: View {
     let timerViewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
 
-    @State private var newTitle = ""
     @State private var editingID: UUID?
     @State private var showsDone = true
-    @FocusState private var isAddFieldFocused: Bool
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -27,7 +25,7 @@ struct TasksScreen: View {
                         .foregroundColor(theme.colors.textSecondary)
                 }
 
-                addField
+                TaskAddField(viewModel: viewModel, theme: theme, scale: 1.2)
 
                 if viewModel.hasTasks {
                     openSection
@@ -51,29 +49,6 @@ struct TasksScreen: View {
             return "A focus session is running. It counts toward its task until it ends."
         }
         return "Focus sessions count toward the current task. Click a task to make it current."
-    }
-
-    // MARK: - Add
-
-    private var addField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "plus")
-                .font(theme.currentFont.font(size: 12, weight: .semibold))
-                .foregroundColor(theme.colors.accent)
-            TextField("Add a task", text: $newTitle)
-                .textFieldStyle(.plain)
-                .font(theme.currentFont.font(size: 13))
-                .foregroundColor(theme.colors.text)
-                .focused($isAddFieldFocused)
-                .onSubmit {
-                    viewModel.addTask(newTitle)
-                    newTitle = ""
-                    isAddFieldFocused = true
-                }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .cardBackground(theme, radius: 10)
     }
 
     // MARK: - Lists

@@ -61,7 +61,7 @@ PCVL/
 ├── Components/                    (shared by panel and window)
 │   ├── TimerControls.swift        (mode toggle, control row, primary/circle buttons, progress line, scroll-to-adjust)
 │   ├── SettingsComponents.swift   (reset confirmation alert, duration stepper)
-│   ├── TaskComponents.swift       (TaskPicker chip + menu, TaskList / TaskRow — compact in the panel)
+│   ├── TaskComponents.swift       (TaskPicker chip + menu, TaskAddField, TaskList / TaskRow — compact in the panel)
 │   ├── StatsComponents.swift      (cards, session row, segmented control, Swift Charts bar charts)
 │   └── ThemedBackground.swift     (per-theme radial gradient)
 ├── Timer/
@@ -135,6 +135,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - The current task is locked while a focus session runs or is paused; free during breaks and between sessions
 - The first task added while none is current becomes current; checking off or deleting the current task clears it
 - `deleteAllSessions` deletes records one by one — a batch delete bypasses the context and leaves loaded tasks listing deleted sessions
+- Add bar (`TaskAddField`, shared by panel and window): dashed circle in the rows' check box column, + button on the right that springs in on hover (opacity/scale only — it always keeps its space so nothing moves); Return adds too
 - Rows (shared by panel and window): click = make current, circle = check off; hovering shows rename (pencil) and delete (trash) — in compact panel rows they replace the time; renaming shows save (✓) / cancel (✕), Return / Esc do the same; right click has the same actions
 - Panel: tasks tab (open tasks only, compact rows); task chip in the timer's top row (only once tasks exist) whose "Manage Tasks…" switches to that tab; context menu: "Task:" submenu. Done tasks are shown in the window only
 

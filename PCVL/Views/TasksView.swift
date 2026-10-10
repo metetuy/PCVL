@@ -10,14 +10,12 @@ struct TasksView: View {
     let timerViewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
 
-    @State private var newTitle = ""
     @State private var editingID: UUID?
-    @FocusState private var isAddFieldFocused: Bool
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 8) {
-                addField
+                TaskAddField(viewModel: viewModel, theme: theme, isCompact: true)
 
                 if viewModel.openTasks.isEmpty {
                     Text(viewModel.hasTasks
@@ -58,26 +56,5 @@ struct TasksView: View {
         }
         let done = viewModel.doneTasks.count
         return done > 0 ? "\(done) done · expand to see all" : nil
-    }
-
-    private var addField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus")
-                .font(theme.currentFont.font(size: 10, weight: .semibold))
-                .foregroundColor(theme.colors.accent)
-            TextField("Add a task", text: $newTitle)
-                .textFieldStyle(.plain)
-                .font(theme.currentFont.font(size: 11))
-                .foregroundColor(theme.colors.text)
-                .focused($isAddFieldFocused)
-                .onSubmit {
-                    viewModel.addTask(newTitle)
-                    newTitle = ""
-                    isAddFieldFocused = true
-                }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .cardBackground(theme)
     }
 }
