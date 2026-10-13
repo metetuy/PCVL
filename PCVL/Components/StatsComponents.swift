@@ -39,15 +39,22 @@ struct StatCard: View {
     var valueColor: Color?
     @ObservedObject var theme: ThemeManager
     var scale: CGFloat = 1
+    /// Shows a flame after the value (the streak card): burning when true, unlit when false.
+    var flameLit: Bool?
 
     var body: some View {
         VStack(spacing: 2 * scale) {
-            Text(value)
-                .font(theme.currentFont.font(size: 17 * scale, weight: .bold, design: .rounded))
-                .foregroundColor(valueColor ?? theme.colors.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .contentTransition(.numericText())
+            HStack(spacing: 3 * scale) {
+                Text(value)
+                    .font(theme.currentFont.font(size: 17 * scale, weight: .bold, design: .rounded))
+                    .foregroundColor(valueColor ?? theme.colors.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .contentTransition(.numericText())
+                if let flameLit {
+                    FlameIcon(lit: flameLit, size: 14 * scale, theme: theme)
+                }
+            }
             Text(label.uppercased())
                 .font(theme.currentFont.font(size: 8 * scale, weight: .medium))
                 .foregroundColor(theme.colors.textSecondary)
@@ -58,6 +65,56 @@ struct StatCard: View {
         .padding(.vertical, 8 * scale)
         .padding(.horizontal, 4)
         .cardBackground(theme, radius: 8 * scale)
+    }
+}
+
+// MARK: - Flame
+
+/// A flickering flame for the streak. Two layered flame glyphs (red-orange body, yellow core)
+/// sway and stretch from their base on a few out-of-phase sine waves, so it never visibly loops.
+/// Unlit (grey, still) when the streak is broken; still when Reduce Motion is on.
+struct FlameIcon: View {
+    let lit: Bool
+    let size: CGFloat
+    @ObservedObject var theme: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let red = Color(red: 0.93, green: 0.26, blue: 0.16)
+    private static let orange = Color(red: 1.0, green: 0.55, blue: 0.13)
+    private static let yellow = Color(red: 1.0, green: 0.85, blue: 0.35)
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !lit || reduceMotion)) { context in
+            flame(at: lit && !reduceMotion ? context.date.timeIntervalSinceReferenceDate : 0)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func flame(at t: TimeInterval) -> some View {
+        if lit {
+            let stretch = 0.06 * sin(t * 9.1) + 0.04 * sin(t * 13.7)
+            let sway = 3.5 * sin(t * 5.3) + 1.5 * sin(t * 11.9)
+            ZStack(alignment: .bottom) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: size))
+                    .foregroundStyle(LinearGradient(colors: [Self.red, Self.orange], startPoint: .bottom, endPoint: .top))
+                    .scaleEffect(x: 1 - stretch * 0.5, y: 1 + stretch, anchor: .bottom)
+                    .rotationEffect(.degrees(sway), anchor: .bottom)
+                Image(systemName: "flame.fill")
+                    .font(.system(size: size * 0.5))
+                    .foregroundStyle(Self.yellow)
+                    .scaleEffect(y: 1 + 0.12 * sin(t * 15.3 + 1), anchor: .bottom)
+                    .rotationEffect(.degrees(-sway * 0.8), anchor: .bottom)
+                    .opacity(0.85 + 0.15 * sin(t * 17.1))
+            }
+            .shadow(color: Self.orange.opacity(0.45 + 0.15 * sin(t * 7.7)), radius: size * 0.25)
+        } else {
+            Image(systemName: "flame")
+                .font(.system(size: size))
+                .foregroundColor(theme.colors.textSecondary.opacity(0.6))
+        }
     }
 }
 

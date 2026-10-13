@@ -196,7 +196,7 @@ struct AnalyticsScreen: View {
             StatCard(value: unit.format(snapshot.dailyAverageSeconds), label: "Daily average", theme: theme, scale: s)
             StatCard(value: unit.format(snapshot.averageSessionSeconds), label: "Avg session", theme: theme, scale: s)
             StatCard(value: "\(snapshot.activeDays)/\(snapshot.elapsedDays)", label: "Active days", theme: theme, scale: s)
-            StatCard(value: "\(snapshot.currentStreak)d", label: "Streak", valueColor: theme.colors.accent, theme: theme, scale: s)
+            StatCard(value: "\(snapshot.currentStreak)d", label: "Streak", valueColor: theme.colors.accent, theme: theme, scale: s, flameLit: snapshot.currentStreak > 0)
         }
     }
 
