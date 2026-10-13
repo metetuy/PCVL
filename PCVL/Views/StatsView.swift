@@ -35,7 +35,7 @@ struct StatsView: View {
         HStack(spacing: 8) {
             StatCard(value: unit.format(viewModel.todayFocusSeconds), label: "Today", theme: theme)
             StatCard(value: "\(viewModel.todaySessions)", label: "Sessions", theme: theme)
-            StatCard(value: "\(viewModel.streak)d", label: "Streak", valueColor: theme.colors.accent, theme: theme)
+            StatCard(value: "\(viewModel.streak)d", label: "Streak", valueColor: theme.colors.accent, theme: theme, flameLit: viewModel.streak > 0)
         }
     }
 
