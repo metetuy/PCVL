@@ -72,6 +72,25 @@ struct MainWindowTests {
         return (sidebar + 0.5 + 14 + 13, titleBar / 2)
     }
 
+    /// The panel's "Create Theme…" lands on a new draft in the settings, which
+    /// survives switching sections.
+    @Test func showThemeEditorOpensSettingsOnNewDraft() async throws {
+        try await withWindow { controller, window in
+            controller.showThemeEditor()
+            await settle()
+            let state = controller.state
+            let editor = try #require(state.themeEditor)
+            #expect(state.section == .settings)
+            #expect(!editor.isEditing)
+            #expect(window.isVisible)
+
+            state.section = .focus
+            await settle()
+            state.section = .settings
+            #expect(state.themeEditor === editor)
+        }
+    }
+
     @Test(arguments: WindowSection.allCases)
     func sidebarButtonTogglesOnClick(section: WindowSection) async throws {
         try await withWindow(sessions: 50) { controller, window in

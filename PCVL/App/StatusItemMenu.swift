@@ -53,8 +53,8 @@ final class StatusItemMenu: NSObject {
         menu.addItem(durationItem("Break", .breakTime))
 
         menu.addItem(.separator())
-        menu.addItem(submenuItem("Theme", options: AppTheme.allCases, selected: themeManager.currentTheme,
-                                 title: \.rawValue, action: #selector(setTheme(_:))))
+        menu.addItem(submenuItem("Theme", options: themeManager.themeOptions.map(\.selection), selected: themeManager.currentTheme,
+                                 title: themeManager.name(for:), action: #selector(setTheme(_:))))
         menu.addItem(.separator())
         menu.addItem(submenuItem("Font", options: AppFont.allCases, selected: themeManager.currentFont,
                                  title: \.rawValue, action: #selector(setFont(_:))))
@@ -123,13 +123,13 @@ final class StatusItemMenu: NSObject {
         _ title: String,
         options: [Option],
         selected: Option,
-        title optionTitle: KeyPath<Option, String>,
+        title optionTitle: (Option) -> String,
         action: Selector
     ) -> NSMenuItem {
         let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         let submenu = NSMenu()
         for option in options {
-            let entry = item(option[keyPath: optionTitle], action: action, isOn: option == selected)
+            let entry = item(optionTitle(option), action: action, isOn: option == selected)
             entry.representedObject = option
             submenu.addItem(entry)
         }
@@ -160,7 +160,7 @@ final class StatusItemMenu: NSObject {
     }
 
     @objc private func setTheme(_ sender: NSMenuItem) {
-        guard let theme = sender.representedObject as? AppTheme else { return }
+        guard let theme = sender.representedObject as? ThemeSelection else { return }
         themeManager.currentTheme = theme
     }
 

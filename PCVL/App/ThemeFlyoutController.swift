@@ -9,12 +9,15 @@ import SwiftUI
 @MainActor
 final class ThemeFlyoutController {
     private let themeManager: ThemeManager
+    /// "Create Theme…": the editor lives in the window.
+    private let onCreateTheme: () -> Void
     private(set) var window: NSPanel?
     private var globalMonitor: Any?
     private var localMonitor: Any?
 
-    init(themeManager: ThemeManager) {
+    init(themeManager: ThemeManager, onCreateTheme: @escaping () -> Void) {
         self.themeManager = themeManager
+        self.onCreateTheme = onCreateTheme
     }
 
     /// `anchorRect` is the theme button's frame in the main panel's coordinate space.
@@ -59,9 +62,14 @@ final class ThemeFlyoutController {
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .utilityWindow
 
-        let content = ThemeFlyoutView(theme: themeManager) { [weak self] selected in
-            self?.themeManager.currentTheme = selected
-        }
+        let content = ThemeFlyoutView(
+            theme: themeManager,
+            onSelect: { [weak self] selected in self?.themeManager.currentTheme = selected },
+            onCreate: { [weak self] in
+                self?.hide()
+                self?.onCreateTheme()
+            }
+        )
         panel.contentView = NSHostingView(rootView: content)
 
         let mainFrame = mainPanel.frame

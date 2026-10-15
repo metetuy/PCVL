@@ -53,9 +53,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
     case redNavy = "Red Navy"
 
     var id: String { rawValue }
-
-    /// Swatch color used to represent this theme in pickers (e.g. the theme flyout).
-    var previewColor: Color { ThemeManager.colors(for: self).accent }
 }
 
 // MARK: - Theme Colors
@@ -116,29 +113,113 @@ enum AppFont: String, CaseIterable, Identifiable {
 // MARK: - Theme Manager
 
 final class ThemeManager: ObservableObject {
-    @Published var currentTheme: AppTheme {
-        didSet { UserDefaults.standard.set(currentTheme.rawValue, forKey: Keys.theme) }
+    @Published var currentTheme: ThemeSelection {
+        didSet {
+            defaults.set(currentTheme.storageValue, forKey: Keys.theme)
+            colors = colors(for: currentTheme)
+        }
     }
+    /// User-created themes, in creation order after the built-ins.
+    @Published private(set) var customThemes: [CustomTheme] {
+        didSet {
+            defaults.set(try? JSONEncoder().encode(customThemes), forKey: Keys.customThemes)
+            colors = colors(for: currentTheme)
+        }
+    }
+    /// Palette of the current theme. Stored rather than computed: views read it many
+    /// times per render.
+    @Published private(set) var colors: ThemeColors
     @Published var currentFont: AppFont {
-        didSet { UserDefaults.standard.set(currentFont.rawValue, forKey: Keys.font) }
+        didSet { defaults.set(currentFont.rawValue, forKey: Keys.font) }
     }
     /// Extra weight steps (0–3) applied to Inter in the timer display.
     @Published var interFontWeightBoost: Int {
-        didSet { UserDefaults.standard.set(interFontWeightBoost, forKey: Keys.weightBoost) }
+        didSet { defaults.set(interFontWeightBoost, forKey: Keys.weightBoost) }
     }
+
+    private let defaults: UserDefaults
 
     private enum Keys {
         static let theme = "selectedTheme"
+        static let customThemes = "customThemes"
         static let font = "selectedFont"
         static let weightBoost = "interFontWeightBoost"
     }
 
-    init() {
-        let defaults = UserDefaults.standard
-        currentTheme = defaults.string(forKey: Keys.theme).flatMap(AppTheme.init(rawValue:)) ?? .minimalist
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let customThemes = defaults.data(forKey: Keys.customThemes)
+            .flatMap { try? JSONDecoder().decode([CustomTheme].self, from: $0) } ?? []
+        var selection = defaults.string(forKey: Keys.theme).flatMap(ThemeSelection.init(storageValue:)) ?? .builtIn(.minimalist)
+        if let id = selection.customID, !customThemes.contains(where: { $0.id == id }) {
+            selection = .builtIn(.minimalist)
+        }
+        self.customThemes = customThemes
+        currentTheme = selection
+        colors = Self.colors(for: selection, customThemes: customThemes)
         currentFont = defaults.string(forKey: Keys.font).flatMap(AppFont.init(rawValue:)) ?? .system
         interFontWeightBoost = (defaults.object(forKey: Keys.weightBoost) as? Int) ?? 1
     }
+
+    // MARK: - Themes
+
+    /// Built-ins first, then custom themes.
+    var themeOptions: [ThemeOption] {
+        AppTheme.allCases.map { ThemeOption(selection: .builtIn($0), name: $0.rawValue, colors: Self.colors(for: $0)) }
+            + customThemes.map { ThemeOption(selection: .custom($0.id), name: $0.name, colors: $0.palette.colors) }
+    }
+
+    var currentThemeName: String { name(for: currentTheme) }
+
+    func name(for selection: ThemeSelection) -> String {
+        switch selection {
+        case .builtIn(let theme): return theme.rawValue
+        case .custom(let id): return customTheme(id)?.name ?? AppTheme.minimalist.rawValue
+        }
+    }
+
+    func colors(for selection: ThemeSelection) -> ThemeColors {
+        Self.colors(for: selection, customThemes: customThemes)
+    }
+
+    func customTheme(_ id: UUID) -> CustomTheme? {
+        customThemes.first { $0.id == id }
+    }
+
+    /// Whether another theme (built-in or custom, other than `excluding`) already has this name.
+    func isThemeNameTaken(_ name: String, excluding id: UUID? = nil) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return AppTheme.allCases.contains { $0.rawValue.caseInsensitiveCompare(name) == .orderedSame }
+            || customThemes.contains { $0.id != id && $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    /// Adds the theme, or replaces the custom theme with the same id.
+    func saveCustomTheme(_ theme: CustomTheme) {
+        if let index = customThemes.firstIndex(where: { $0.id == theme.id }) {
+            customThemes[index] = theme
+        } else {
+            customThemes.append(theme)
+        }
+    }
+
+    /// Deleting the current theme falls back to Minimalist.
+    func deleteCustomTheme(_ id: UUID) {
+        customThemes.removeAll { $0.id == id }
+        if currentTheme == .custom(id) {
+            currentTheme = .builtIn(.minimalist)
+        }
+    }
+
+    private static func colors(for selection: ThemeSelection, customThemes: [CustomTheme]) -> ThemeColors {
+        switch selection {
+        case .builtIn(let theme):
+            return colors(for: theme)
+        case .custom(let id):
+            return customThemes.first { $0.id == id }?.palette.colors ?? colors(for: .minimalist)
+        }
+    }
+
+    // MARK: - Fonts
 
     // Font specifically for the timer display — applies weight boost
     func timerFont(size: CGFloat, weight: Font.Weight = .thin) -> Font {
@@ -161,11 +242,9 @@ final class ThemeManager: ObservableObject {
         }
     }
 
-    var colors: ThemeColors {
-        Self.colors(for: currentTheme)
-    }
+    // MARK: - Built-in Palettes
 
-    /// Palette of any theme, e.g. for previews in the theme picker. Built once per
+    /// Palette of any built-in theme, e.g. for previews in the theme picker. Built once per
     /// theme: views read colors many times per render.
     static func colors(for theme: AppTheme) -> ThemeColors {
         palettes[theme] ?? makeColors(for: .minimalist)

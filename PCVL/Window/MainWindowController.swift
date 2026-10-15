@@ -42,10 +42,14 @@ enum WindowSection: String, CaseIterable, Identifiable {
 }
 
 /// UI state of the window shared between the controller and the SwiftUI views:
-/// selected section, full screen, and whether the sidebar shows icons only.
+/// selected section, full screen, whether the sidebar shows icons only, and the
+/// theme being created or edited.
 @MainActor
 final class WindowState: ObservableObject {
     @Published var section: WindowSection = .focus
+    /// While set, the settings section shows the theme editor. Kept here so the draft
+    /// survives switching sections, and so the panel can open the editor.
+    @Published var themeEditor: ThemeEditorViewModel?
     @Published private(set) var isFullScreen = false
     @Published private(set) var isSidebarCollapsed: Bool
 
@@ -146,6 +150,12 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     func show(section: WindowSection) {
         state.section = section
         bringToFront()
+    }
+
+    /// Opens the settings on a new custom theme (from the panel's theme flyout).
+    func showThemeEditor() {
+        state.themeEditor = ThemeEditorViewModel(themeManager: themeManager)
+        show(section: .settings)
     }
 
     /// Brings the window back without changing the section (e.g. from the menu bar icon).

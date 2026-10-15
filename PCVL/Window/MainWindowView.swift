@@ -81,7 +81,7 @@ struct MainWindowView: View {
                 }
             }
         case .settings:
-            SettingsScreen(timerViewModel: timerViewModel, theme: theme, settings: settings)
+            SettingsScreen(timerViewModel: timerViewModel, theme: theme, settings: settings, themeEditor: $state.themeEditor)
         }
     }
 

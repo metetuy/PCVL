@@ -30,7 +30,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         taskAnalyticsViewModel: taskAnalyticsViewModel,
         onSwitchedToPanel: { [weak self] in self?.showPanelAfterWindowMode() }
     )
-    private lazy var themeFlyout = ThemeFlyoutController(themeManager: themeManager)
+    private lazy var themeFlyout = ThemeFlyoutController(themeManager: themeManager) { [weak self] in
+        self?.enterWindowMode { $0.showThemeEditor() }
+    }
     private lazy var statusMenu = StatusItemMenu(
         timer: viewModel,
         themeManager: themeManager,
@@ -171,10 +173,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Panel → window. Every way into the window goes through here so the panel is
     /// always put away first (it stays disabled while the window is open).
     private func enterWindowMode(section: WindowSection) {
+        enterWindowMode { $0.show(section: section) }
+    }
+
+    /// `show` presents the window once the panel is closed.
+    private func enterWindowMode(_ show: @escaping (MainWindowController) -> Void) {
         // Deferred: may be invoked from a SwiftUI button action in the panel.
         DispatchQueue.main.async { [weak self] in
-            self?.closePanel()
-            self?.windowController.show(section: section)
+            guard let self else { return }
+            self.closePanel()
+            show(self.windowController)
         }
     }
 

@@ -10,10 +10,15 @@ struct ThemedBackground: View {
     var radius: CGFloat = 220
 
     var body: some View {
+        Self.gradient(theme.colors.background, radius: radius)
+    }
+
+    /// The same vignette for any background color, e.g. a theme preview.
+    static func gradient(_ background: Color, radius: CGFloat = 220) -> RadialGradient {
         RadialGradient(
             colors: [
-                theme.colors.background.lightened(by: 0.06),
-                theme.colors.background.darkened(by: 0.18)
+                background.lightened(by: 0.06),
+                background.darkened(by: 0.18)
             ],
             center: UnitPoint(x: 0.5, y: 0.35),
             startRadius: 4,

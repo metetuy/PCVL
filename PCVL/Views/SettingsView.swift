@@ -171,10 +171,10 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 7) {
                 Circle()
-                    .fill(theme.currentTheme.previewColor)
+                    .fill(theme.colors.accent)
                     .frame(width: 7, height: 7)
 
-                Text(theme.currentTheme.rawValue)
+                Text(theme.currentThemeName)
                     .font(theme.currentFont.font(size: 11, weight: .medium))
                     .foregroundColor(theme.colors.text)
 

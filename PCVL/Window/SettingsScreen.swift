@@ -11,9 +11,24 @@ struct SettingsScreen: View {
     @ObservedObject var theme: ThemeManager
     @ObservedObject var settings: AppSettings
 
+    /// The theme being created or edited; the editor replaces the settings while set.
+    @Binding var themeEditor: ThemeEditorViewModel?
+
     @State private var showingResetAlert = false
 
     var body: some View {
+        if let themeEditor {
+            ThemeEditorScreen(model: themeEditor, theme: theme) {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    self.themeEditor = nil
+                }
+            }
+        } else {
+            settingsList
+        }
+    }
+
+    private var settingsList: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Settings")
@@ -63,14 +78,39 @@ struct SettingsScreen: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Theme", theme: theme, scale: 1.2)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
-                ForEach(AppTheme.allCases) { appTheme in
-                    ThemeTile(appTheme: appTheme, theme: theme) {
+                ForEach(theme.themeOptions) { option in
+                    let customTheme = option.selection.customID.flatMap(theme.customTheme)
+                    ThemeTile(option: option, theme: theme, onEdit: customTheme.map { custom in { editTheme(custom) } }) {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            theme.currentTheme = appTheme
+                            theme.currentTheme = option.selection
+                        }
+                    }
+                    .contextMenu {
+                        Button("New Theme from “\(option.name)”…") { createTheme(from: option) }
+                        if let customTheme {
+                            Button("Edit…") { editTheme(customTheme) }
+                            Button("Delete", role: .destructive) { theme.deleteCustomTheme(customTheme.id) }
                         }
                     }
                 }
+                NewThemeTile(theme: theme) { createTheme() }
             }
+        }
+    }
+
+    private func createTheme(from option: ThemeOption? = nil) {
+        let editor = ThemeEditorViewModel(themeManager: theme)
+        if let option { editor.start(from: option) }
+        openEditor(editor)
+    }
+
+    private func editTheme(_ customTheme: CustomTheme) {
+        openEditor(ThemeEditorViewModel(themeManager: theme, editing: customTheme))
+    }
+
+    private func openEditor(_ editor: ThemeEditorViewModel) {
+        withAnimation(.easeInOut(duration: 0.15)) {
+            themeEditor = editor
         }
     }
 
@@ -209,14 +249,18 @@ struct SettingsScreen: View {
 // MARK: - Theme Tile
 
 /// Miniature preview of a theme: its background, a text bar and an accent pill.
+/// Custom themes show an edit button on hover.
 private struct ThemeTile: View {
-    let appTheme: AppTheme
+    let option: ThemeOption
     @ObservedObject var theme: ThemeManager
+    var onEdit: (() -> Void)?
     let action: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
-        let colors = ThemeManager.colors(for: appTheme)
-        let isSelected = theme.currentTheme == appTheme
+        let colors = option.colors
+        let isSelected = theme.currentTheme == option.selection
 
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
@@ -239,16 +283,22 @@ private struct ThemeTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: 7))
                 .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.black.opacity(0.08), lineWidth: 0.5))
 
-                HStack {
-                    Text(appTheme.rawValue)
+                HStack(spacing: 6) {
+                    Text(option.name)
                         .font(theme.currentFont.font(size: 12, weight: isSelected ? .semibold : .regular))
                         .foregroundColor(isSelected ? theme.colors.text : theme.colors.textSecondary)
                         .lineLimit(1)
                     Spacer()
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(theme.currentFont.font(size: 10, weight: .bold))
-                            .foregroundColor(theme.colors.accent)
+                    if let onEdit, isHovering {
+                        Button(action: onEdit) {
+                            Image(systemName: "pencil")
+                                .font(theme.currentFont.font(size: 10, weight: .semibold))
+                                .foregroundColor(theme.colors.textSecondary)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .hoverEffect()
+                        .help("Edit theme")
                     }
                 }
             }
@@ -263,5 +313,39 @@ private struct ThemeTile: View {
         }
         .buttonStyle(.plain)
         .hoverEffect()
+        .onHover { isHovering = $0 }
+    }
+}
+
+/// Last tile of the grid: opens the theme editor on a new theme.
+private struct NewThemeTile: View {
+    @ObservedObject var theme: ThemeManager
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(theme.currentFont.font(size: 16, weight: .medium))
+                    .foregroundColor(theme.colors.accent)
+                    .frame(maxWidth: .infinity, minHeight: 58)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(theme.colors.textSecondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    )
+                Text("Create Theme")
+                    .font(theme.currentFont.font(size: 12))
+                    .foregroundColor(theme.colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(8)
+            .background(theme.colors.surface.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .hoverEffect()
+        .help("Create your own theme")
     }
 }

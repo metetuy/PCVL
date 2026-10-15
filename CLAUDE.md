@@ -19,10 +19,11 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 - **AppSettings**: ObservableObject owning the shared preferences (always on top, timer in menu bar, stats time unit) and the shared actions (reset statistics with confirmation, export, quit). The panel's settings tab, the window's settings screen and the context menu all bind to it
 - **StatusItemMenu**: Builds the right-click context menu and handles its actions through the same models
 - **ThemeFlyoutController**: The theme picker panel that pops out beside the main panel
-- **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed
+- **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed / theme editor draft
 - **TimerEngine**: Pure value-type state machine — countdown + stopwatch modes, no side effects; elapsed time is measured against a wall-clock `Date` passed in, so late/throttled ticks never lose time
 - **TimerViewModel**: ObservableObject, drives all timer state, session recording, notifications
-- **ThemeManager**: Color schemes + font management, `@Published` properties persisted to UserDefaults
+- **ThemeManager**: Color schemes + font management, `@Published` properties persisted to UserDefaults; owns custom themes (`customThemes`, JSON under `customThemes`) and the current `ThemeSelection` (built-in or custom); `themeOptions` lists both for every theme picker
+- **ThemeEditorViewModel**: Draft of a custom theme (name, `ThemePalette`, selected color role), validation, save (also applies it) / delete — surface-independent so the panel can reuse it
 - **StatisticsManager**: SwiftData CRUD for SessionRecord models, date-range fetches, cached focus days for streaks; `didChange` fires after every save and when the day rolls over (also on wake / time zone change)
 - **StatsAnalyzer**: Pure aggregation (periods, buckets, streaks, distributions) — no side effects
 - **AnalyticsViewModel**: ObservableObject for the window's analytics — range, period navigation, minutes/hours unit; only recomputes while active (set by MainWindowController), otherwise marks itself stale
@@ -41,7 +42,7 @@ PCVL/
 │   ├── AppDelegate.swift          (menu bar icon, NSPanel, event handling)
 │   ├── AppSettings.swift          (shared preferences + reset/export/quit actions)
 │   ├── StatusItemMenu.swift       (right-click context menu)
-│   └── ThemeFlyoutController.swift(theme picker flyout panel)
+│   └── ThemeFlyoutController.swift(theme picker flyout panel, "Create Theme…" → window editor)
 ├── Window/                        (optional desktop window, one file per screen)
 │   ├── MainWindowController.swift (NSWindow setup + delegate, WindowSection, WindowState)
 │   ├── MainWindowView.swift       (collapsible sidebar, top bar: sidebar / full screen / panel)
@@ -49,7 +50,8 @@ PCVL/
 │   ├── TasksScreen.swift          (add, pick current, check off, rename, delete; totals per task)
 │   ├── AnalyticsScreen.swift      (tasks section first, then time: totals, chart + sessions, distributions, insights last)
 │   ├── TaskAnalyticsSection.swift (task cards with hour blocks, sessions behind the selected card, SessionTaskMenu)
-│   └── SettingsScreen.swift       (durations, theme previews, font, panel behavior, data)
+│   ├── SettingsScreen.swift       (durations, theme previews + Create Theme tile, font, panel behavior, data)
+│   └── ThemeEditorScreen.swift    (create / edit a custom theme, shown in place of the settings)
 ├── Views/                         (menu bar panel, 300x190)
 │   ├── PopoverView.swift          (tab shell: timer/stats/settings + swipe navigation)
 │   ├── ExpandHandle.swift         (hover "Expand for details" → opens the window)
@@ -63,12 +65,15 @@ PCVL/
 │   ├── SettingsComponents.swift   (reset confirmation alert, duration stepper)
 │   ├── TaskComponents.swift       (TaskPicker chip + menu, TaskAddField, TaskList / TaskRow — compact in the panel)
 │   ├── StatsComponents.swift      (cards, session row, segmented control, Swift Charts bar charts)
+│   ├── ThemeComponents.swift      (ThemePreview, ThemeRoleList, ThemeColorPicker: spectrum, hue, hex, swatches)
 │   └── ThemedBackground.swift     (per-theme radial gradient)
 ├── Timer/
 │   ├── TimerEngine.swift          (pure state machine: idle/running/paused/completed)
 │   └── TimerViewModel.swift       (observable, orchestrates engine + stats + notifications)
 ├── Themes/
-│   └── ThemeManager.swift         (AppTheme enum + AppFont, `colors(for:)` for previews)
+│   ├── ThemeManager.swift         (AppTheme enum + AppFont, `colors(for:)` for previews, custom themes)
+│   ├── CustomTheme.swift          (RGBColor, ThemeColorRole, ThemePalette, CustomTheme, ThemeSelection, ThemeOption)
+│   └── ThemeEditorViewModel.swift (custom theme draft + swatches)
 ├── Data/
 │   ├── StatisticsManager.swift    (SwiftData SessionRecord, range fetches, snapshot(range:offset:))
 │   ├── TaskManager.swift          (SwiftData FocusTask, TaskItem, current task)
@@ -82,7 +87,7 @@ PCVL/
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
-├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift
 └── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
 ```
 
@@ -112,6 +117,14 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 | Light      | #F7F7FB    | #4D4DA6 |
 | Ocean      | #0A1429    | #40B3D9 |
 | Bloom      | #241A28    | #F26589 |
+
+### Custom themes
+- `CustomTheme`: id, name, `ThemePalette` of 7 `RGBColor`s (stored as "#RRGGBB"); `timerRing` always follows `accent`
+- Selection persists under `selectedTheme`: a built-in's raw value (unchanged) or `custom:<uuid>`; a missing or deleted custom theme falls back to Minimalist
+- Names are unique among all themes, ignoring case; palettes follow the same rules as built-ins (`ThemePalette.problems`)
+- Window: Settings › Theme grid ends with a "Create Theme" tile; custom tiles edit via hover pencil or right click (Edit / Delete); any tile → right click "New Theme from …". The editor replaces the settings screen (draft held in `WindowState.themeEditor`, so it survives switching sections): live `ThemePreview` of the panel (break phase while editing the Break color), color list, picker for the selected color; Save (⌘S) applies the theme, Esc cancels
+- Panel: custom themes are selectable in the flyout and the context menu; the flyout's fixed "Create Theme…" row enters window mode straight into a new draft (`MainWindowController.showThemeEditor`) — there is no editor in the panel
+- The selected theme tile is marked by its accent border and bold name only (no checkmark)
 
 ### Fonts
 - `AppFont.system` — native system font
