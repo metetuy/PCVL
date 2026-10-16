@@ -16,23 +16,40 @@ final class ThemeEditorViewModel: ObservableObject, Identifiable {
     /// The custom theme being edited; nil while creating a new one.
     let editingID: UUID?
     private let themeManager: ThemeManager
+    /// The draft as it was opened, for `revert()`.
+    private let originalName: String
+    private let originalPalette: ThemePalette
 
     /// A new theme, starting from the current theme's colors.
-    init(themeManager: ThemeManager) {
-        self.themeManager = themeManager
-        editingID = nil
-        palette = ThemePalette(themeManager.colors)
-        name = Self.suggestedName(in: themeManager)
+    convenience init(themeManager: ThemeManager) {
+        self.init(
+            themeManager: themeManager,
+            editingID: nil,
+            name: Self.suggestedName(in: themeManager),
+            palette: ThemePalette(themeManager.colors)
+        )
     }
 
-    init(themeManager: ThemeManager, editing theme: CustomTheme) {
+    convenience init(themeManager: ThemeManager, editing theme: CustomTheme) {
+        self.init(themeManager: themeManager, editingID: theme.id, name: theme.name, palette: theme.palette)
+    }
+
+    private init(themeManager: ThemeManager, editingID: UUID?, name: String, palette: ThemePalette) {
         self.themeManager = themeManager
-        editingID = theme.id
-        palette = theme.palette
-        name = theme.name
+        self.editingID = editingID
+        self.name = name
+        self.palette = palette
+        originalName = name
+        originalPalette = palette
     }
 
     var isEditing: Bool { editingID != nil }
+
+    /// Whether the name or any color differs from when the draft was opened. Colors
+    /// compare by hex: that is what gets saved.
+    var hasChanges: Bool {
+        name != originalName || ThemeColorRole.allCases.contains { palette[$0].hex != originalPalette[$0].hex }
+    }
 
     var selectedColor: RGBColor {
         get { palette[selectedRole] }
@@ -56,6 +73,12 @@ final class ThemeEditorViewModel: ObservableObject, Identifiable {
     /// Replaces every color with another theme's (the name is kept).
     func start(from option: ThemeOption) {
         palette = ThemePalette(option.colors)
+    }
+
+    /// Back to the name and colors the draft was opened with (the selected color stays).
+    func revert() {
+        name = originalName
+        palette = originalPalette
     }
 
     /// Saves the theme and makes it the current one.

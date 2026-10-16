@@ -123,6 +123,11 @@ struct ThemeEditorScreen: View {
                 }
             }
 
+            footerButton("Revert", color: theme.colors.textSecondary, action: model.revert)
+                .disabled(!model.hasChanges)
+                .opacity(model.hasChanges ? 1 : 0.4)
+                .help(model.isEditing ? "Undo changes since this theme was opened" : "Back to the colors this theme started with")
+
             Spacer()
 
             if let problem = model.problems.first {

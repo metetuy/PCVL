@@ -127,6 +127,50 @@ struct ThemeTests {
         #expect(ThemeEditorViewModel(themeManager: manager).name == "My Theme", "suggested name skips taken ones only")
     }
 
+    @Test func revertRestoresNewDraft() throws {
+        let manager = ThemeManager(defaults: defaults)
+        manager.currentTheme = .builtIn(.ocean)
+        let editor = ThemeEditorViewModel(themeManager: manager)
+        let startAccent = editor.palette.accent.hex
+        #expect(!editor.hasChanges)
+
+        editor.name = "Changed"
+        editor.selectedRole = .background
+        editor.selectedColor = try #require(RGBColor(hex: "#FF0000"))
+        editor.start(from: try #require(manager.themeOptions.first { $0.selection == .builtIn(.bloom) }))
+        #expect(editor.hasChanges)
+
+        editor.revert()
+        #expect(!editor.hasChanges)
+        #expect(editor.name == "My Theme")
+        #expect(editor.palette.accent.hex == startAccent)
+        #expect(editor.selectedRole == .background, "revert keeps the color being edited")
+        #expect(manager.customThemes.isEmpty, "revert never saves")
+    }
+
+    @Test func revertRestoresSavedTheme() throws {
+        let manager = ThemeManager(defaults: defaults)
+        let custom = CustomTheme(name: "Mine", palette: samplePalette)
+        manager.saveCustomTheme(custom)
+
+        let editor = ThemeEditorViewModel(themeManager: manager, editing: custom)
+        editor.name = "Renamed"
+        editor.palette.ringTrack = try #require(RGBColor(hex: "#123456"))
+        editor.revert()
+
+        #expect(editor.name == "Mine")
+        #expect(editor.palette.ringTrack.hex == samplePalette.ringTrack.hex)
+        #expect(manager.customThemes == [custom], "the saved theme is untouched")
+    }
+
+    @Test func colorChangeBelowHexPrecisionIsNotAChange() {
+        let manager = ThemeManager(defaults: defaults)
+        let editor = ThemeEditorViewModel(themeManager: manager)
+        let accent = editor.palette.accent
+        editor.palette.accent = RGBColor(red: accent.red + 0.0005, green: accent.green, blue: accent.blue)
+        #expect(!editor.hasChanges, "saved as hex, so it would save the same color")
+    }
+
     @Test func editorEditsInPlace() {
         let manager = ThemeManager(defaults: defaults)
         let custom = CustomTheme(name: "Mine", palette: samplePalette)
