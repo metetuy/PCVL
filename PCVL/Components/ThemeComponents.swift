@@ -160,9 +160,14 @@ struct ThemeColorPicker: View {
     @ObservedObject var theme: ThemeManager
     var spectrumHeight: CGFloat = 140
 
-    /// Kept apart from `color`: grays have no hue of their own, and the spectrum
-    /// must not jump back to red when one is picked.
+    /// The picker's own position, the source of truth while dragging. Re-deriving it
+    /// from the RGB color on every change would wobble (and grays have no hue), so it
+    /// is only re-read when the color changes from elsewhere (hex, swatch, other role).
     @State private var hue: Double = 0
+    @State private var saturation: Double = 0
+    @State private var brightness: Double = 0
+    /// The last color this picker produced, to tell its own changes from outside ones.
+    @State private var emitted: RGBColor?
 
     private static let hueStops = (0...6).map { RGBColor(hue: Double($0) / 6, saturation: 1, brightness: 1).color }
 
@@ -179,20 +184,29 @@ struct ThemeColorPicker: View {
             }
             swatchGrid
         }
-        .onAppear(perform: syncHue)
-        .onChange(of: color) { _, _ in syncHue() }
+        .onAppear(perform: syncFromColor)
+        .onChange(of: color) { _, newColor in
+            if newColor != emitted { syncFromColor() }
+        }
     }
 
-    private func syncHue() {
+    private func syncFromColor() {
         let hsb = color.hsb
+        saturation = hsb.saturation
+        brightness = hsb.brightness
         if hsb.saturation > 0, hsb.brightness > 0 {
             hue = hsb.hue
         }
     }
 
+    private func emit() {
+        let newColor = RGBColor(hue: hue, saturation: saturation, brightness: brightness)
+        emitted = newColor
+        color = newColor
+    }
+
     private var spectrum: some View {
-        let hsb = color.hsb
-        return GeometryReader { geo in
+        GeometryReader { geo in
             ZStack {
                 ZStack {
                     RGBColor(hue: hue, saturation: 1, brightness: 1).color
@@ -202,15 +216,13 @@ struct ThemeColorPicker: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 marker(fill: color.color)
-                    .position(x: hsb.saturation * geo.size.width, y: (1 - hsb.brightness) * geo.size.height)
+                    .position(x: saturation * geo.size.width, y: (1 - brightness) * geo.size.height)
             }
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                color = RGBColor(
-                    hue: hue,
-                    saturation: fraction(value.location.x, of: geo.size.width),
-                    brightness: 1 - fraction(value.location.y, of: geo.size.height)
-                )
+                saturation = fraction(value.location.x, of: geo.size.width)
+                brightness = 1 - fraction(value.location.y, of: geo.size.height)
+                emit()
             })
         }
         .frame(height: spectrumHeight)
@@ -227,8 +239,7 @@ struct ThemeColorPicker: View {
             .gesture(DragGesture(minimumDistance: 0).onChanged { value in
                 // Short of 1, which is red again and would snap the marker to the start.
                 hue = min(fraction(value.location.x, of: geo.size.width), 0.9999)
-                let hsb = color.hsb
-                color = RGBColor(hue: hue, saturation: hsb.saturation, brightness: hsb.brightness)
+                emit()
             })
         }
         .frame(height: 12)
@@ -273,7 +284,9 @@ struct ThemeColorPicker: View {
 // MARK: - Hex Field
 
 /// Hex input: six digits apply as they are typed, the short "#RGB" form on Return;
-/// anything invalid reverts when editing ends.
+/// anything invalid reverts when editing ends. Only writes the color when the text
+/// names a different one: echoing the displayed hex back would round every drag of
+/// the spectrum to 8 bits per channel.
 private struct HexColorField: View {
     @Binding var color: RGBColor
     @ObservedObject var theme: ThemeManager
@@ -299,7 +312,7 @@ private struct HexColorField: View {
                 }
             }
             .onChange(of: text) { _, newText in
-                if newText.filter(\.isHexDigit).count == 6, let parsed = RGBColor(hex: newText) {
+                if newText.filter(\.isHexDigit).count == 6, let parsed = RGBColor(hex: newText), parsed.hex != color.hex {
                     color = parsed
                 }
             }
@@ -310,7 +323,7 @@ private struct HexColorField: View {
     }
 
     private func commit() {
-        if let parsed = RGBColor(hex: text) {
+        if let parsed = RGBColor(hex: text), parsed.hex != color.hex {
             color = parsed
         }
         text = color.hex
