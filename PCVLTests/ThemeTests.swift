@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import PCVL
 
@@ -58,6 +59,19 @@ struct ThemeTests {
     }
 
     // MARK: - Theme Manager
+
+    @Test func colorSchemeFollowsBackground() {
+        let manager = ThemeManager(defaults: defaults)
+        #expect(manager.colorScheme == nil, "Minimalist follows the system")
+        manager.currentTheme = .builtIn(.dark)
+        #expect(manager.colorScheme == .dark)
+        manager.currentTheme = .builtIn(.light)
+        #expect(manager.colorScheme == .light)
+        manager.currentTheme = .builtIn(.roseLight)
+        #expect(manager.colorScheme == .light)
+        manager.currentTheme = .builtIn(.navyGold)
+        #expect(manager.colorScheme == .dark)
+    }
 
     @Test func legacySelectionStillLoads() {
         defaults.set("Ocean", forKey: "selectedTheme")

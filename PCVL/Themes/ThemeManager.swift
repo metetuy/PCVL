@@ -171,6 +171,13 @@ final class ThemeManager: ObservableObject {
 
     var currentThemeName: String { name(for: currentTheme) }
 
+    /// Light or dark to match the current theme's background, for native controls
+    /// drawn on it; nil follows the system (Minimalist is built from system colors).
+    var colorScheme: ColorScheme? {
+        guard currentTheme != .builtIn(.minimalist) else { return nil }
+        return RGBColor(colors.background).luminance < 0.5 ? .dark : .light
+    }
+
     func name(for selection: ThemeSelection) -> String {
         switch selection {
         case .builtIn(let theme): return theme.rawValue

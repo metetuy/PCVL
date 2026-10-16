@@ -10,6 +10,10 @@ struct ThemeEditorScreen: View {
     @ObservedObject var theme: ThemeManager
     let onClose: () -> Void
 
+    @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.controlActiveState) private var controlActiveState
+    @State private var isConfirmingDelete = false
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
@@ -51,21 +55,20 @@ struct ThemeEditorScreen: View {
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        // Native controls (buttons, text fields, menus) drawn light or dark to suit
+        // the theme rather than the system appearance.
+        .environment(\.colorScheme, theme.colorScheme ?? systemColorScheme)
+        .controlSize(.large)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: onClose) {
                 Image(systemName: "chevron.left")
-                    .font(theme.currentFont.font(size: 13, weight: .semibold))
-                    .foregroundColor(theme.colors.textSecondary)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .hoverEffect()
+            .buttonBorderShape(.circle)
             .help("Back to Settings")
 
             Text(model.isEditing ? "Edit Theme" : "New Theme")
@@ -74,27 +77,12 @@ struct ThemeEditorScreen: View {
 
             Spacer()
 
-            Menu {
+            Menu("Start From") {
                 ForEach(theme.themeOptions) { option in
                     Button(option.name) { model.start(from: option) }
                 }
-            } label: {
-                HStack(spacing: 5) {
-                    Text("Start from")
-                        .font(theme.currentFont.font(size: 12, weight: .medium))
-                    Image(systemName: "chevron.down")
-                        .font(theme.currentFont.font(size: 9, weight: .semibold))
-                }
-                .foregroundColor(theme.colors.text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .cardBackground(theme, radius: 7)
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
             .fixedSize()
-            .hoverEffect()
             .help("Replace every color with another theme's")
         }
     }
@@ -114,21 +102,19 @@ struct ThemeEditorScreen: View {
 
     // MARK: - Footer
 
+    /// Laid out like a macOS dialog: actions on the draft itself (Delete, Revert) on
+    /// the left, Cancel and the prominent Save on the right.
     private var footer: some View {
         HStack(spacing: 10) {
             if model.isEditing {
-                footerButton("Delete", color: Color(nsColor: NSColor(red: 0.85, green: 0.3, blue: 0.3, alpha: 1))) {
-                    model.delete()
-                    onClose()
-                }
+                deleteButton
             }
 
-            footerButton("Revert", color: theme.colors.textSecondary, action: model.revert)
+            Button("Revert", action: model.revert)
                 .disabled(!model.hasChanges)
-                .opacity(model.hasChanges ? 1 : 0.4)
                 .help(model.isEditing ? "Undo changes since this theme was opened" : "Back to the colors this theme started with")
 
-            Spacer()
+            Spacer(minLength: 12)
 
             if let problem = model.problems.first {
                 Text(problem)
@@ -137,30 +123,116 @@ struct ThemeEditorScreen: View {
                     .lineLimit(1)
             }
 
-            footerButton("Cancel", color: theme.colors.textSecondary, action: onClose)
+            Button("Cancel", action: onClose)
                 .keyboardShortcut(.cancelAction)
 
-            footerButton("Save", color: theme.colors.accent) {
+            Button {
                 model.save()
                 onClose()
+            } label: {
+                Text("Save")
+                    // The theme's own pairing on its accent, as on the timer's start
+                    // button; inactive windows draw the button grey, so the system
+                    // label color takes over there.
+                    .foregroundStyle(controlActiveState == .inactive ? AnyShapeStyle(.primary) : AnyShapeStyle(theme.colors.background))
+                    .frame(minWidth: 56)
             }
+            .buttonStyle(.borderedProminent)
+            .tint(theme.colors.accent)
             .keyboardShortcut("s", modifiers: .command)
             .disabled(!model.canSave)
-            .opacity(model.canSave ? 1 : 0.4)
+            .help("Save and apply (⌘S)")
         }
     }
 
-    private func footerButton(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(theme.currentFont.font(size: 12, weight: .medium))
-                .foregroundColor(color)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(color.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
+    /// Two steps: Delete collapses into a trash circle on a red "Are you sure?" bar,
+    /// and only the circle deletes, so a double click never does. It stays that way
+    /// until the next click: anywhere but the circle puts Delete back.
+    private var deleteButton: some View {
+        HStack(spacing: 0) {
+            if isConfirmingDelete {
+                HStack(spacing: 0) {
+                    Button {
+                        model.delete()
+                        onClose()
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.red)
+                            .frame(width: Self.deleteHeight - 4, height: Self.deleteHeight - 4)
+                            .background(.white, in: Circle())
+                            .contentShape(Circle())
+                            // Inset, so a red ring keeps it apart from light backgrounds.
+                            .padding(2)
+                    }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+                    .help("Delete this theme")
+
+                    Text("Are you sure?")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white)
+                        .padding(.leading, 8)
+                        .padding(.trailing, 14)
+                }
+                .frame(height: Self.deleteHeight)
+                .background(.red, in: Capsule())
+            } else {
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Delete")
+                        Image(systemName: "trash")
+                    }
+                    .foregroundStyle(.red)
+                }
+                .help("Delete this theme")
+            }
         }
-        .buttonStyle(.plain)
-        .hoverEffect()
+        .disarmOnNextClick($isConfirmingDelete)
+    }
+
+    /// Height of a large native button, so the confirmation lines up with its row.
+    private static let deleteHeight: CGFloat = 28
+}
+
+// MARK: - Disarm on Next Click
+
+private extension View {
+    /// Sets `isArmed` back to false after the next mouse click anywhere in the app.
+    func disarmOnNextClick(_ isArmed: Binding<Bool>) -> some View {
+        modifier(DisarmOnNextClick(isArmed: isArmed))
+    }
+}
+
+/// Watches clicks only while armed. Installed after the arming click has been
+/// handled, so that click never counts; disarms after the next click has been
+/// handled, so a click on the confirming button still lands.
+private struct DisarmOnNextClick: ViewModifier {
+    @Binding var isArmed: Bool
+    @State private var monitor: Any?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: isArmed) { _, armed in
+                armed ? install() : remove()
+            }
+            .onDisappear(perform: remove)
+    }
+
+    private func install() {
+        remove()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp, .rightMouseUp, .otherMouseUp]) { event in
+            DispatchQueue.main.async { isArmed = false }
+            return event
+        }
+    }
+
+    private func remove() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        monitor = nil
     }
 }

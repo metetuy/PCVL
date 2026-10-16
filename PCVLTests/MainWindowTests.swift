@@ -13,6 +13,7 @@ struct MainWindowTests {
     /// window frame and sidebar preference afterwards.
     private func withWindow(
         sessions: Int = 0,
+        themeManager: ThemeManager = ThemeManager(),
         _ body: (MainWindowController, NSWindow) async throws -> Void
     ) async throws {
         let defaults = UserDefaults.standard
@@ -31,7 +32,7 @@ struct MainWindowTests {
         let taskManager = TaskManager(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!)
         let controller = MainWindowController(
             timerViewModel: timer,
-            themeManager: ThemeManager(),
+            themeManager: themeManager,
             settings: settings,
             statsSummary: StatsSummaryViewModel(statsManager: stats, settings: settings),
             tasksViewModel: TasksViewModel(taskManager: taskManager, statsManager: stats, timer: timer),
@@ -61,6 +62,85 @@ struct MainWindowTests {
                 windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
             )!
             window.sendEvent(event)
+        }
+    }
+
+    /// Bounds (in window coordinates) of the system-red pixels in the left half of
+    /// the window's content: the theme editor's Delete control. SwiftUI exposes too
+    /// little accessibility here to find the button by name. The right half holds
+    /// the picker's red swatch, so it is left out.
+    private func redBounds(in window: NSWindow) throws -> NSRect? {
+        let view = try #require(window.contentView)
+        let rep = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / view.bounds.width
+        var minX = Int.max, minY = Int.max, maxX = -1, maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<(rep.pixelsWide / 2) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if color.redComponent > 0.85, color.greenComponent < 0.45, color.blueComponent < 0.45 {
+                    minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+                }
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        // Bitmap rows run top-down; window coordinates bottom-up.
+        return NSRect(
+            x: CGFloat(minX) / scale,
+            y: view.bounds.height - CGFloat(maxY + 1) / scale,
+            width: CGFloat(maxX - minX + 1) / scale,
+            height: CGFloat(maxY - minY + 1) / scale
+        )
+    }
+
+    /// A click through the application, so local event monitors see it too.
+    private func appClick(_ window: NSWindow, at point: NSPoint) {
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = NSEvent.mouseEvent(
+                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            )!
+            NSApp.sendEvent(event)
+        }
+    }
+
+    /// Deleting a theme takes the trash circle that replaces Delete. It stays armed
+    /// whatever the pointer does, and the next click anywhere else (including a
+    /// double click's second click on "Are you sure?") puts Delete back.
+    @Test func deletingAThemeTakesTheConfirmingCircle() async throws {
+        let suite = "PCVLTests.MainWindow.Themes.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let themeManager = ThemeManager(defaults: defaults)
+        let custom = CustomTheme(name: "Doomed", palette: ThemePalette(ThemeManager.colors(for: .ocean)))
+        themeManager.saveCustomTheme(custom)
+
+        try await withWindow(themeManager: themeManager) { controller, window in
+            controller.state.themeEditor = ThemeEditorViewModel(themeManager: themeManager, editing: custom)
+            controller.show(section: .settings)
+            await settle()
+
+            let idle = try #require(try redBounds(in: window), "Delete is drawn in red")
+            let delete = NSPoint(x: idle.midX, y: idle.midY)
+
+            appClick(window, at: delete)
+            await settle()
+            let armed = try #require(try redBounds(in: window))
+            #expect(armed.width > idle.width, "armed, it widens into the red bar")
+
+            // Another click, here on "Are you sure?" where Delete was: disarms, deletes nothing.
+            appClick(window, at: delete)
+            await settle()
+            #expect(themeManager.customThemes == [custom])
+            #expect(try redBounds(in: window)?.width == idle.width, "back to Delete")
+
+            appClick(window, at: delete)
+            await settle()
+            // The trash circle sits at the bar's leading end, one bar-height wide.
+            appClick(window, at: NSPoint(x: armed.minX + armed.height / 2, y: armed.midY))
+            await settle()
+            #expect(themeManager.customThemes.isEmpty)
+            #expect(controller.state.themeEditor == nil, "deleting closes the editor")
         }
     }
 

@@ -88,7 +88,7 @@ PCVL/
     └── Inter-VariableFont_opsz,wght.ttf
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
 ├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift
-└── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing)
+└── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing, theme delete confirmation)
 ```
 
 ## Key implementation details
@@ -122,7 +122,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - `CustomTheme`: id, name, `ThemePalette` of 7 `RGBColor`s (stored as "#RRGGBB"); `timerRing` always follows `accent`
 - Selection persists under `selectedTheme`: a built-in's raw value (unchanged) or `custom:<uuid>`; a missing or deleted custom theme falls back to Minimalist
 - Names are unique among all themes, ignoring case; palettes follow the same rules as built-ins (`ThemePalette.problems`)
-- Window: Settings › Theme grid ends with a "Create Theme" tile; custom tiles edit via hover pencil or right click (Edit / Delete); any tile → right click "New Theme from …". The editor replaces the settings screen (draft held in `WindowState.themeEditor`, so it survives switching sections): live `ThemePreview` of the panel (break phase while editing the Break color), color list, picker for the selected color; Revert restores the name and colors the draft was opened with (enabled once something differs by hex); Save (⌘S) applies the theme, Esc cancels
+- Window: Settings › Theme grid ends with a "Create Theme" tile; custom tiles edit via hover pencil or right click (Edit / Delete); any tile → right click "New Theme from …". The editor replaces the settings screen (draft held in `WindowState.themeEditor`, so it survives switching sections): live `ThemePreview` of the panel (break phase while editing the Break color), color list, picker for the selected color; Revert restores the name and colors the draft was opened with (enabled once something differs by hex); Save (⌘S) applies the theme, Esc cancels. Native controls, laid out like a macOS dialog: Delete + Revert left, Cancel + prominent Save (accent tint) right; Delete takes two steps, no animation: Delete (with a trash icon) turns into a red "Are you sure?" bar with a white trash circle at its start, and only the circle deletes (a double click lands on the text). It stays armed regardless of hover until the next click: anywhere but the circle disarms (local mouse-up monitor, installed after the arming click). The editor sets `colorScheme` from `ThemeManager.colorScheme` (theme background luminance; nil = system for Minimalist) so native controls suit the theme
 - Panel: custom themes are selectable in the flyout and the context menu; the flyout's fixed "Create Theme…" row enters window mode straight into a new draft (`MainWindowController.showThemeEditor`) — there is no editor in the panel
 - The selected theme tile is marked by its accent border and bold name only (no checkmark)
 

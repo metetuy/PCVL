@@ -80,6 +80,9 @@ struct RGBColor: Hashable {
 
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
 
+    /// Perceived lightness, 0 (black) to 1 (white).
+    var luminance: Double { 0.2126 * red + 0.7152 * green + 0.0722 * blue }
+
     private func byte(_ component: Double) -> Int { Int((component * 255).rounded()) }
 }
 
