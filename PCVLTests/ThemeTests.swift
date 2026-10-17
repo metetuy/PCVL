@@ -50,6 +50,22 @@ struct ThemeTests {
         }
     }
 
+    @Test func focusTextDefaultsToMenuText() throws {
+        // Built-ins and themes saved before the focus text existed keep one text color.
+        for theme in AppTheme.allCases {
+            let colors = ThemeManager.colors(for: theme)
+            #expect(RGBColor(colors.focusText).hex == RGBColor(colors.text).hex)
+        }
+        let legacy = ##"{"background":"#101010","surface":"#202020","text":"#EEEEEE","textSecondary":"#888888","accent":"#FF8800","breakRing":"#00AA88","ringTrack":"#303030"}"##
+        let palette = try JSONDecoder().decode(ThemePalette.self, from: Data(legacy.utf8))
+        #expect(palette.focusText.hex == "#EEEEEE")
+
+        var edited = palette
+        edited.focusText = try #require(RGBColor(hex: "#FF0000"))
+        #expect(RGBColor(edited.colors.focusText).hex == "#FF0000")
+        #expect(RGBColor(edited.colors.text).hex == "#EEEEEE")
+    }
+
     @Test func paletteRules() {
         var palette = samplePalette
         #expect(palette.problems.isEmpty)

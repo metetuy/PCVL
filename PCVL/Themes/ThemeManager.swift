@@ -60,12 +60,30 @@ enum AppTheme: String, CaseIterable, Identifiable {
 struct ThemeColors {
     let background: Color
     let surface: Color
+    /// Menu text: titles, rows, labels and values everywhere except the timer digits.
     let text: Color
+    /// The timer digits. Built-in themes use the menu text color.
+    let focusText: Color
     let textSecondary: Color
     let accent: Color
     let timerRing: Color
     let breakRing: Color
     let ringTrack: Color
+
+    init(
+        background: Color, surface: Color, text: Color, focusText: Color? = nil, textSecondary: Color,
+        accent: Color, timerRing: Color, breakRing: Color, ringTrack: Color
+    ) {
+        self.background = background
+        self.surface = surface
+        self.text = text
+        self.focusText = focusText ?? text
+        self.textSecondary = textSecondary
+        self.accent = accent
+        self.timerRing = timerRing
+        self.breakRing = breakRing
+        self.ringTrack = ringTrack
+    }
 }
 
 // MARK: - App Font

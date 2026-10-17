@@ -6,7 +6,9 @@ import SwiftUI
 
 // MARK: - Theme Preview
 
-/// The menu bar panel's timer tab drawn with any palette, at the panel's real size.
+/// Two screens drawn with any palette, at the panel's real size, side by side in a
+/// pager: the timer tab and a sample of the analytics. A horizontal trackpad scroll
+/// (or a dot) switches between them.
 struct ThemePreview: View {
     let colors: ThemeColors
     /// Fonts only: the preview follows the chosen typeface.
@@ -14,6 +16,66 @@ struct ThemePreview: View {
     var isBreak = false
 
     static let size = CGSize(width: 300, height: 190)
+
+    private enum Page: Int, CaseIterable {
+        case timer, analytics
+
+        var title: String {
+            switch self {
+            case .timer: return "Timer"
+            case .analytics: return "Analytics"
+            }
+        }
+    }
+
+    @State private var page: Page? = .timer
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    TimerPreviewPage(colors: colors, theme: theme, isBreak: isBreak)
+                        .id(Page.timer)
+                    AnalyticsPreviewPage(colors: colors, theme: theme)
+                        .id(Page.analytics)
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $page)
+            .frame(width: Self.size.width, height: Self.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .background(RoundedRectangle(cornerRadius: 12).fill(colors.background).shadow(color: .black.opacity(0.18), radius: 10, y: 4))
+
+            HStack(spacing: 14) {
+                ForEach(Page.allCases, id: \.self) { item in
+                    let isSelected = (page ?? .timer) == item
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { page = item }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(isSelected ? theme.colors.accent : theme.colors.textSecondary.opacity(0.35))
+                                .frame(width: 6, height: 6)
+                            Text(item.title)
+                                .font(theme.currentFont.font(size: 11, weight: isSelected ? .semibold : .regular))
+                                .foregroundColor(isSelected ? theme.colors.text : theme.colors.textSecondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(width: Self.size.width)
+        }
+    }
+}
+
+/// The menu bar panel's timer tab.
+private struct TimerPreviewPage: View {
+    let colors: ThemeColors
+    @ObservedObject var theme: ThemeManager
+    let isBreak: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,7 +114,7 @@ struct ThemePreview: View {
                 VStack(spacing: 6) {
                     Text(isBreak ? "03:12" : "18:42")
                         .font(theme.timerFont(size: 36, weight: .thin))
-                        .foregroundColor(colors.text)
+                        .foregroundColor(colors.focusText)
                     progressLine
                     Text("Resume")
                         .font(theme.currentFont.font(size: 11.5, weight: .semibold))
@@ -68,11 +130,9 @@ struct ThemePreview: View {
             .padding(.horizontal, 16)
             Spacer()
         }
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: ThemePreview.size.width, height: ThemePreview.size.height)
         .background(ThemedBackground.gradient(colors.background))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(colors.text.opacity(0.08), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .animation(.easeInOut(duration: 0.2), value: isBreak)
     }
 
@@ -105,6 +165,110 @@ struct ThemePreview: View {
             }
         }
         .frame(height: 3)
+    }
+}
+
+/// A made-up week of statistics: range picker, headline numbers and a bar chart.
+private struct AnalyticsPreviewPage: View {
+    let colors: ThemeColors
+    @ObservedObject var theme: ThemeManager
+
+    /// Focus and break hours per weekday, Monday first.
+    private let days: [(label: String, focus: Double, rest: Double)] = [
+        ("M", 0.55, 0.12), ("T", 0.8, 0.2), ("W", 0.4, 0.1), ("T", 0.95, 0.25),
+        ("F", 0.65, 0.15), ("S", 0.25, 0.05), ("S", 0.5, 0.1),
+    ]
+    private let ranges = ["Day", "Week", "Month"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("Analytics")
+                    .font(theme.currentFont.font(size: 13, weight: .semibold))
+                    .foregroundColor(colors.text)
+                Spacer()
+                HStack(spacing: 0) {
+                    ForEach(ranges, id: \.self) { range in
+                        Text(range)
+                            .font(theme.currentFont.font(size: 8.5, weight: .medium))
+                            .foregroundColor(range == "Week" ? colors.accent : colors.textSecondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(range == "Week" ? colors.accent.opacity(0.12) : Color.clear)
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(2)
+                .background(colors.surface)
+                .clipShape(Capsule())
+            }
+
+            HStack(spacing: 6) {
+                statCard("Focus", value: "12h 40m", valueColor: colors.accent)
+                statCard("Sessions", value: "28")
+                statCard("Streak", value: "6 days")
+            }
+
+            chart
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: ThemePreview.size.width, height: ThemePreview.size.height)
+        .background(ThemedBackground.gradient(colors.background))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(colors.text.opacity(0.08), lineWidth: 0.5))
+    }
+
+    private func statCard(_ title: String, value: String, valueColor: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(theme.currentFont.font(size: 8, weight: .medium))
+                .foregroundColor(colors.textSecondary)
+            Text(value)
+                .font(theme.currentFont.font(size: 12, weight: .semibold))
+                .foregroundColor(valueColor ?? colors.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(colors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(colors.text.opacity(0.06), lineWidth: 0.5))
+    }
+
+    private var chart: some View {
+        VStack(spacing: 3) {
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Rectangle().fill(colors.ringTrack).frame(height: 0.5)
+                        Spacer(minLength: 0)
+                    }
+                }
+                HStack(alignment: .bottom, spacing: 9) {
+                    ForEach(days.indices, id: \.self) { index in
+                        VStack(spacing: 1.5) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(colors.breakRing)
+                                .frame(height: days[index].rest * 52)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(colors.accent)
+                                .frame(height: days[index].focus * 52)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            HStack(spacing: 9) {
+                ForEach(days.indices, id: \.self) { index in
+                    Text(days[index].label)
+                        .font(theme.currentFont.font(size: 8))
+                        .foregroundColor(colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
     }
 }
 

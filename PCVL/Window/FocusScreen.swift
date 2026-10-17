@@ -33,7 +33,7 @@ struct FocusScreen: View {
 
                 Text(viewModel.engine.formattedTime)
                     .font(theme.timerFont(size: timeSize, weight: .thin))
-                    .foregroundColor(theme.colors.text)
+                    .foregroundColor(theme.colors.focusText)
                     .contentTransition(.numericText())
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)

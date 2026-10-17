@@ -47,7 +47,7 @@ struct TimerView: View {
         VStack(spacing: 6) {
             Text(viewModel.engine.formattedTime)
                 .font(theme.timerFont(size: 36, weight: .thin))
-                .foregroundColor(theme.colors.text)
+                .foregroundColor(theme.colors.focusText)
                 .contentTransition(.numericText())
 
             TimerProgressLine(viewModel: viewModel, theme: theme)

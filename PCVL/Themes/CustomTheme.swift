@@ -107,7 +107,7 @@ extension RGBColor: Codable {
 /// The colors a user picks for a theme. `timerRing` always follows `accent`, as in
 /// every built-in theme.
 enum ThemeColorRole: String, CaseIterable, Identifiable {
-    case background, surface, text, textSecondary, accent, breakRing, ringTrack
+    case background, surface, focusText, text, textSecondary, accent, breakRing, ringTrack
 
     var id: String { rawValue }
 
@@ -115,7 +115,8 @@ enum ThemeColorRole: String, CaseIterable, Identifiable {
         switch self {
         case .background: return "Background"
         case .surface: return "Surface"
-        case .text: return "Text"
+        case .focusText: return "Focus text"
+        case .text: return "Menu text"
         case .textSecondary: return "Secondary text"
         case .accent: return "Accent"
         case .breakRing: return "Break"
@@ -127,7 +128,8 @@ enum ThemeColorRole: String, CaseIterable, Identifiable {
         switch self {
         case .background: return "Panel and window background"
         case .surface: return "Cards, buttons and toggles"
-        case .text: return "Time and titles"
+        case .focusText: return "The timer digits"
+        case .text: return "Titles, lists, settings and values"
         case .textSecondary: return "Labels and icons"
         case .accent: return "Focus progress and the main button"
         case .breakRing: return "Break progress"
@@ -139,6 +141,7 @@ enum ThemeColorRole: String, CaseIterable, Identifiable {
         switch self {
         case .background: return \.background
         case .surface: return \.surface
+        case .focusText: return \.focusText
         case .text: return \.text
         case .textSecondary: return \.textSecondary
         case .accent: return \.accent
@@ -151,16 +154,35 @@ enum ThemeColorRole: String, CaseIterable, Identifiable {
 struct ThemePalette: Codable, Hashable {
     var background: RGBColor
     var surface: RGBColor
+    var focusText: RGBColor
     var text: RGBColor
     var textSecondary: RGBColor
     var accent: RGBColor
     var breakRing: RGBColor
     var ringTrack: RGBColor
 
+    private enum CodingKeys: String, CodingKey {
+        case background, surface, focusText, text, textSecondary, accent, breakRing, ringTrack
+    }
+
+    /// Themes saved before the focus text existed have none: it follows the menu text.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        background = try container.decode(RGBColor.self, forKey: .background)
+        surface = try container.decode(RGBColor.self, forKey: .surface)
+        text = try container.decode(RGBColor.self, forKey: .text)
+        focusText = try container.decodeIfPresent(RGBColor.self, forKey: .focusText) ?? text
+        textSecondary = try container.decode(RGBColor.self, forKey: .textSecondary)
+        accent = try container.decode(RGBColor.self, forKey: .accent)
+        breakRing = try container.decode(RGBColor.self, forKey: .breakRing)
+        ringTrack = try container.decode(RGBColor.self, forKey: .ringTrack)
+    }
+
     /// Snapshot of an existing theme's colors, e.g. to start a new theme from it.
     init(_ colors: ThemeColors) {
         background = RGBColor(colors.background)
         surface = RGBColor(colors.surface)
+        focusText = RGBColor(colors.focusText)
         text = RGBColor(colors.text)
         textSecondary = RGBColor(colors.textSecondary)
         accent = RGBColor(colors.accent)
@@ -178,6 +200,7 @@ struct ThemePalette: Codable, Hashable {
             background: background.color,
             surface: surface.color,
             text: text.color,
+            focusText: focusText.color,
             textSecondary: textSecondary.color,
             accent: accent.color,
             timerRing: accent.color,

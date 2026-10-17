@@ -199,7 +199,7 @@ private struct SidebarSessionStatus: View {
                     VStack(spacing: 5) {
                         Text(viewModel.engine.formattedTime)
                             .font(theme.currentFont.font(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundColor(theme.colors.text)
+                            .foregroundColor(theme.colors.focusText)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
@@ -217,7 +217,7 @@ private struct SidebarSessionStatus: View {
                             Spacer()
                             Text(viewModel.engine.formattedTime)
                                 .font(theme.currentFont.font(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(theme.colors.text)
+                                .foregroundColor(theme.colors.focusText)
                                 .monospacedDigit()
                                 .contentTransition(.numericText())
                         }
