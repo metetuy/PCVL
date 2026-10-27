@@ -49,6 +49,7 @@ struct PopoverView: View {
                         viewModel: viewModel,
                         theme: themeManager,
                         settings: settings,
+                        updater: settings.updater,
                         onShowThemePicker: onShowThemePicker
                     )
                 }

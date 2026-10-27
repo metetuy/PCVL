@@ -17,6 +17,8 @@ The panel stays concise; "Expand for details" opens an optional resizable deskto
 ## App architecture
 - **AppDelegate**: NSStatusItem + NSPanel (`KeyablePanel`, can become key so text fields take typing) setup, outside-click monitors, font registration, menu bar icon updates, panel ↔ window transitions, observes `AppSettings` (always on top, timer in menu bar)
 - **AppSettings**: ObservableObject owning the shared preferences (always on top, timer in menu bar, stats time unit) and the shared actions (reset statistics with confirmation, export, quit). The panel's settings tab, the window's settings screen and the context menu all bind to it
+- **Updater**: ObservableObject (owned by `AppSettings` as `settings.updater`) checking GitHub Releases (`releases/latest` of metetuy/PCVL) — status, daily silent automatic checks, notification once per found version; installs through `UpdateInstaller`
+- **UpdateInstaller**: Downloads the release zip + `.sig`, verifies the Ed25519 signature (`UpdateInstaller.publicKey`), unzips with `ditto`, checks bundle id / version / code signature (team pinned when the running app has one), swaps the bundle in place and relaunches
 - **StatusItemMenu**: Builds the right-click context menu and handles its actions through the same models
 - **ThemeFlyoutController**: The theme picker panel that pops out beside the main panel
 - **MainWindowController**: Lazily creates the titled, resizable NSWindow (frame autosaved, native full screen as part of window mode); `WindowState` holds section / full screen / sidebar collapsed / theme editor draft
@@ -67,6 +69,10 @@ PCVL/
 │   ├── StatsComponents.swift      (cards, session row, segmented control, Swift Charts bar charts)
 │   ├── ThemeComponents.swift      (ThemePreview, ThemeRoleList, ThemeColorPicker: spectrum, hue, hex, swatches)
 │   └── ThemedBackground.swift     (per-theme radial gradient)
+├── Update/
+│   ├── UpdateRelease.swift        (AppVersion, GitHubRelease → UpdateRelease, UpdateError)
+│   ├── UpdateInstaller.swift      (download, signature + code signing checks, replace, relaunch)
+│   └── Updater.swift              (status, automatic checks, alerts for the context menu)
 ├── Timer/
 │   ├── TimerEngine.swift          (pure state machine: idle/running/paused/completed)
 │   └── TimerViewModel.swift       (observable, orchestrates engine + stats + notifications)
@@ -84,10 +90,15 @@ PCVL/
 │   ├── StatsFormatting.swift      (StatsFormat display strings)
 │   ├── AnalyticsViewModel.swift   (window analytics state)
 │   └── StatsSummaryViewModel.swift(panel stats state)
+├── AppIcon.icon/                  (Icon Composer app icon, used by the build; Assets.xcassets/AppIcon.appiconset is the pre-rendered fallback)
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
+scripts/
+├── release.sh                     (archive → build/PCVL-<version>.dmg for installing, .zip + .zip.sig for the updater; optional `gh release create v<version>`)
+├── dmg-background.swift           (DMG window background: slate gradient + arrow, 1x/2x)
+└── update-signer.swift            (Ed25519 key in the login Keychain: generate-keys / public-key / sign <file>)
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
-├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift
+├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift, UpdateTests.swift
 └── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing, theme delete confirmation)
 ```
 
@@ -159,6 +170,12 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - Done tasks show "Created … · Done …" (tasks screen, cards); menus add the creation day to done tasks and to tasks sharing a title (`TasksViewModel.menuTitle(for:among:)`)
 - Assigning: "No task" sessions → "Assign all to a task…" (confirmation) via `StatisticsManager.assignUntaggedSessions(toTask:)`; any focus session in the time section's list → right click → Task ▸ (`assignSession(_:toTask:)`). Breaks are never assigned
 - The time section below is unchanged; session rows show their task
+
+### Updates (GitHub Releases)
+- A release is installable when its tag is a version (`v1.2`) newer than `CFBundleShortVersionString` and it has a `.zip` asset plus `<zip name>.sig` (base64 Ed25519 signature of the zip); `/releases/latest` skips drafts and pre-releases; 404 (no release, or private repo) counts as up to date
+- Install: signature first, then the app inside must match bundle id and the tag's version and pass strict code signing validation; then `replaceItemAt` over the running bundle (refused when translocated or not writable), records a session in progress (confirmed first), relaunches via a shell that waits for the PID
+- Surfaces: window Settings › Updates (status, Check Now / Install and Restart, release notes, automatic toggle `checksForUpdatesAutomatically`), panel settings row, context menu "Check for Updates…" / "Update to PCVL x…" (alerts)
+- Releasing: bump MARKETING_VERSION + CURRENT_PROJECT_VERSION, run `scripts/release.sh`, publish all three files (dmg, zip, zip.sig) on release `v<version>`; people install from the DMG (drag to Applications), the updater only uses the zip. Never ship a build with an empty `UpdateInstaller.publicKey`, and never lose the Keychain key
 
 ### Desktop window
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"

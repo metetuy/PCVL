@@ -27,7 +27,7 @@ struct MainWindowTests {
             let type: SessionType = index % 3 == 0 ? .shortBreak : (index % 5 == 0 ? .stopwatch : .work)
             stats.recordSession(duration: 600 + index * 37 % 4000, date: Date().addingTimeInterval(-Double(index) * 5400), type: type)
         }
-        let settings = AppSettings(statsManager: stats)
+        let settings = AppSettings(statsManager: stats, updater: Updater(defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!))
         let timer = TimerViewModel()
         let taskManager = TaskManager(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.MainWindow")!)
         let controller = MainWindowController(

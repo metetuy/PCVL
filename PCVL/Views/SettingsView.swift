@@ -7,6 +7,7 @@ struct SettingsView: View {
     let viewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
     @ObservedObject var settings: AppSettings
+    @ObservedObject var updater: Updater
     var onShowThemePicker: (CGRect) -> Void
 
     @State private var showingResetAlert = false
@@ -25,6 +26,8 @@ struct SettingsView: View {
 
                 // Window behavior
                 behaviorSection
+
+                updateSection
 
                 // Data management
                 resetButton
@@ -239,6 +242,49 @@ struct SettingsView: View {
                 .padding(.vertical, 7)
 
             }
+            .background(theme.colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))
+        }
+    }
+
+    // MARK: - Updates
+
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("UPDATES")
+
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PCVL \(updater.currentVersion.description)")
+                        .font(theme.currentFont.font(size: 11, weight: .medium))
+                        .foregroundColor(theme.colors.text)
+                    Text(updater.statusText)
+                        .font(theme.currentFont.font(size: 9))
+                        .foregroundColor(theme.colors.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                if let action = updater.action {
+                    Button(action: updater.performAction) {
+                        Text(action == .install ? "Install" : "Check")
+                            .font(theme.currentFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(action == .install ? theme.colors.accent : theme.colors.text)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background((action == .install ? theme.colors.accent : theme.colors.text).opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect()
+                } else {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
             .background(theme.colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.colors.text.opacity(0.06), lineWidth: 0.5))

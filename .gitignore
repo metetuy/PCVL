@@ -76,3 +76,5 @@ __pycache__/
 .venv/
 
 Config.swift
+# Release builds (scripts/release.sh)
+/build/

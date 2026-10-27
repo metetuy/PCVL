@@ -67,6 +67,7 @@ final class StatusItemMenu: NSObject {
         menu.addItem(item("Reset Statistics…", action: #selector(resetStatistics)))
 
         menu.addItem(.separator())
+        menu.addItem(updateItem())
         menu.addItem(item("Quit PCVL", action: #selector(quit), keyEquivalent: "q"))
 
         return menu
@@ -137,6 +138,16 @@ final class StatusItemMenu: NSObject {
         return parent
     }
 
+    /// "Check for Updates…", named after the update once a check has found one; both
+    /// check again and offer to install in an alert. Shows the progress while busy.
+    private func updateItem() -> NSMenuItem {
+        let updater = settings.updater
+        let title = updater.availableRelease.map { "Update to PCVL \($0.version)…" } ?? "Check for Updates…"
+        let entry = item(updater.isBusy ? updater.statusText : title, action: #selector(checkForUpdates))
+        if updater.isBusy { entry.action = nil }
+        return entry
+    }
+
     private struct DurationChoice {
         let duration: TimerViewModel.AdjustableDuration
         let minutes: Int
@@ -174,6 +185,8 @@ final class StatusItemMenu: NSObject {
     @objc private func toggleMenuBarTimer() { settings.showTimerInMenuBar.toggle() }
 
     @objc private func resetStatistics() { settings.confirmResetStatistics() }
+
+    @objc private func checkForUpdates() { settings.updater.checkForUpdatesWithAlert() }
 
     @objc private func quit() { settings.quit() }
 }

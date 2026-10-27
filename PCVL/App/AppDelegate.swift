@@ -14,7 +14,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let viewModel = TimerViewModel()
     private let themeManager = ThemeManager()
     private let statsManager = StatisticsManager()
-    private lazy var settings = AppSettings(statsManager: statsManager)
+    private lazy var settings = AppSettings(statsManager: statsManager, updater: Updater())
     private lazy var taskManager = TaskManager(statsManager: statsManager)
     private lazy var tasksViewModel = TasksViewModel(taskManager: taskManager, statsManager: statsManager, timer: viewModel)
     private lazy var statsSummary = StatsSummaryViewModel(statsManager: statsManager, settings: settings)
@@ -66,6 +66,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         viewModel.setStatisticsManager(statsManager)
         viewModel.setTaskManager(taskManager)
+        settings.updater.setTimer(viewModel)
+        settings.updater.startAutomaticChecks()
         viewModel.menuBarUpdater = { [weak self] time, isRunning in
             self?.updateMenuBar(time: time, isRunning: isRunning)
         }

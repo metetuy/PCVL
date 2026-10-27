@@ -3,13 +3,14 @@ import SwiftUI
 // MARK: - Settings Screen
 
 /// Window-sized settings: timer durations, appearance with live theme previews,
-/// menu bar behavior and data management.
+/// menu bar behavior, updates and data management.
 struct SettingsScreen: View {
     /// Not observed here: only the duration rows depend on the timer's state, so a
     /// running timer does not re-render the whole screen every second.
     let timerViewModel: TimerViewModel
     @ObservedObject var theme: ThemeManager
     @ObservedObject var settings: AppSettings
+    @ObservedObject var updater: Updater
 
     /// The theme being created or edited; the editor replaces the settings while set.
     @Binding var themeEditor: ThemeEditorViewModel?
@@ -39,6 +40,7 @@ struct SettingsScreen: View {
                 themeSection
                 fontSection
                 menuBarSection
+                updatesSection
                 dataSection
             }
             .padding(.horizontal, 28)
@@ -157,6 +159,36 @@ struct SettingsScreen: View {
             divider
             row(title: "Timer in menu bar", subtitle: "Show the remaining time next to the icon") {
                 Toggle("", isOn: $settings.showTimerInMenuBar)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    // MARK: - Updates
+
+    private var updatesSection: some View {
+        settingsGroup("Updates") {
+            row(title: "PCVL \(updater.currentVersion)", subtitle: updater.statusText) {
+                HStack(spacing: 8) {
+                    if let release = updater.availableRelease {
+                        Link("Release Notes", destination: release.pageURL)
+                            .font(theme.currentFont.font(size: 12))
+                            .foregroundColor(theme.colors.textSecondary)
+                    }
+                    switch updater.action {
+                    case .check:
+                        actionButton(title: "Check Now", icon: "arrow.clockwise", color: theme.colors.text, action: updater.performAction)
+                    case .install:
+                        actionButton(title: "Install and Restart", icon: "arrow.down.circle", color: theme.colors.accent, action: updater.performAction)
+                    case nil:
+                        ProgressView().controlSize(.small)
+                    }
+                }
+            }
+            divider
+            row(title: "Check automatically", subtitle: "Once a day") {
+                Toggle("", isOn: $updater.checksAutomatically)
                     .toggleStyle(.switch)
                     .controlSize(.small)
             }

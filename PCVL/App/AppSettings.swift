@@ -30,11 +30,15 @@ final class AppSettings: ObservableObject {
         static let statsTimeUnit = "statsTimeUnit"
     }
 
+    /// Checks GitHub Releases and installs updates; observed by the settings screens.
+    let updater: Updater
+
     private let defaults: UserDefaults
     private let statsManager: StatisticsManager
 
-    init(statsManager: StatisticsManager, defaults: UserDefaults = .standard) {
+    init(statsManager: StatisticsManager, updater: Updater, defaults: UserDefaults = .standard) {
         self.statsManager = statsManager
+        self.updater = updater
         self.defaults = defaults
         alwaysOnTop = defaults.bool(forKey: Keys.alwaysOnTop)
         showTimerInMenuBar = defaults.bool(forKey: Keys.showTimerInMenuBar)

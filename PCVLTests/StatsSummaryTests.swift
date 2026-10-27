@@ -9,7 +9,7 @@ struct StatsSummaryTests {
     private let settings: AppSettings
 
     init() {
-        settings = AppSettings(statsManager: stats, defaults: UserDefaults(suiteName: "PCVLTests.StatsSummary")!)
+        settings = AppSettings(statsManager: stats, updater: Updater(defaults: UserDefaults(suiteName: "PCVLTests.StatsSummary")!), defaults: UserDefaults(suiteName: "PCVLTests.StatsSummary")!)
     }
 
     /// An hour into today, so the session never straddles midnight.
