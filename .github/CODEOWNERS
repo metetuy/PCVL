@@ -1,0 +1,6 @@
+# Changes to how releases are built, signed and installed need the owner's review
+# (enforced by the main branch ruleset's "Require review from Code Owners").
+/.github/                  @metetuy
+/scripts/                  @metetuy
+/PCVL/Update/              @metetuy
+/PCVL.xcodeproj/project.pbxproj @metetuy

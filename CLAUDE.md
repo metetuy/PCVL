@@ -93,14 +93,16 @@ PCVL/
 ├── AppIcon.icon/                  (Icon Composer app icon, used by the build; Assets.xcassets/AppIcon.appiconset is the pre-rendered fallback)
 └── Fonts/
     └── Inter-VariableFont_opsz,wght.ttf
-.github/workflows/release.yml      (push to main with a new MARKETING_VERSION → release; otherwise skips)
+.github/workflows/release.yml      (push to main with a new MARKETING_VERSION → release; otherwise skips; actions pinned by commit SHA)
+.github/CODEOWNERS                 (release, signing and updater code need the owner's review)
 scripts/
 ├── release.sh                     (archive → build/PCVL-<version>.dmg for installing, .zip + .zip.sig for the updater; optional `gh release create v<version>`; `--dmg-only` rebuilds and opens just the DMG for layout tweaks)
 ├── dmg-background.swift           (DMG window background: slate gradient + arrow, 1x/2x; size and arrow position come from release.sh)
 └── update-signer.swift            (Ed25519 key in the login Keychain: generate-keys / public-key / sign <file>)
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
 ├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift, UpdateTests.swift
-└── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing, theme delete confirmation)
+├── MainWindowTests.swift          (real window + synthesized clicks: sidebar button, full screen, sizing, theme delete confirmation)
+└── ReadmeScreenshots.swift        (renders docs/screenshots for README.md with sample data; only runs with TEST_RUNNER_PCVL_SCREENSHOTS=1)
 ```
 
 ## Key implementation details
@@ -176,7 +178,7 @@ PCVLTests/                         (Swift Testing, hosted in the app; run with �
 - A release is installable when its tag is a version (`v1.2`) newer than `CFBundleShortVersionString` and it has a `.zip` asset plus `<zip name>.sig` (base64 Ed25519 signature of the zip); `/releases/latest` skips drafts and pre-releases; 404 (no release, or private repo) counts as up to date
 - Install: signature first, then the app inside must match bundle id and the tag's version and pass strict code signing validation; then `replaceItemAt` over the running bundle (refused when translocated or not writable), records a session in progress (confirmed first), relaunches via a shell that waits for the PID
 - Surfaces: window Settings › Updates (status, Check Now / Install and Restart, release notes, automatic toggle `checksForUpdatesAutomatically`), panel settings row, context menu "Check for Updates…" / "Update to PCVL x…" (alerts)
-- Releasing: bump MARKETING_VERSION + CURRENT_PROJECT_VERSION and push to main — `.github/workflows/release.yml` (runner `xcode-27`) publishes v<version> when it has no release yet, signing with the `UPDATE_SIGNING_KEY` secret; locally: run `scripts/release.sh`, publish all three files (dmg, zip, zip.sig) on release `v<version>`; people install from the DMG (drag to Applications), the updater only uses the zip. Never ship a build with an empty `UpdateInstaller.publicKey`, and never lose the Keychain key
+- Releasing: bump MARKETING_VERSION + CURRENT_PROJECT_VERSION and push to main — `.github/workflows/release.yml` (runner `xcode-27`) publishes v<version> when it has no release yet, signing with the `UPDATE_SIGNING_KEY` secret of the `release` environment (main only; only the publish job enters it, the version check job has no secrets); locally: run `scripts/release.sh`, publish all three files (dmg, zip, zip.sig) on release `v<version>`; people install from the DMG (drag to Applications), the updater only uses the zip. Never ship a build with an empty `UpdateInstaller.publicKey`, and never lose the Keychain key
 
 ### Desktop window
 - Window mode = window visible or minimized. While active the panel is disabled: the menu bar icon brings the window forward, the context menu offers "Show PCVL Window" / "Switch to Menu Bar Panel"

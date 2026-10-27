@@ -3,7 +3,11 @@
 # v<version> appears with the DMG, the zip and its signature. Pushes that keep
 # the version build nothing.
 #
-# Needs the repository secret UPDATE_SIGNING_KEY (see scripts/update-signer.swift).
+# The signing key is the UPDATE_SIGNING_KEY secret of the "release" environment
+# (see scripts/update-signer.swift). Only the publish job enters that
+# environment, and the environment only admits main, so workflows on other
+# branches can't read the key. Required reviewers on it make every release wait
+# for approval.
 
 name: Release
 
@@ -13,26 +17,36 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 jobs:
-  release:
+  check:
+    if: github.ref == 'refs/heads/main'
     runs-on: xcode-27
-    timeout-minutes: 30
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Check for a new version
         id: version
         run: |
           version=$(xcodebuild -project PCVL.xcodeproj -scheme PCVL -configuration Release -showBuildSettings 2>/dev/null \
             | awk '$1 == "MARKETING_VERSION" { print $3; exit }')
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]]; then
+            echo "::error::MARKETING_VERSION \"$version\" isn't a version number like 1.2."
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if gh release view "v$version" >/dev/null 2>&1; then
             echo "v$version is already released; bump MARKETING_VERSION to publish a new one."
@@ -41,13 +55,27 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and publish v${{ steps.version.outputs.version }}
-        if: steps.version.outputs.release == 'true'
+  publish:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and publish v${{ needs.check.outputs.version }}
         env:
           PCVL_UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           if [ -z "$PCVL_UPDATE_SIGNING_KEY" ]; then
-            echo "::error::Add the UPDATE_SIGNING_KEY repository secret (see scripts/update-signer.swift)."
+            echo "::error::Add UPDATE_SIGNING_KEY to the release environment's secrets (see scripts/update-signer.swift)."
             exit 1
           fi
           xcodebuild -version
