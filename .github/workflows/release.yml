@@ -1,0 +1,54 @@
+# Publishes a GitHub release when a push to main carries a version that has no
+# release yet: bump MARKETING_VERSION (and CURRENT_PROJECT_VERSION), push, and
+# v<version> appears with the DMG, the zip and its signature. Pushes that keep
+# the version build nothing.
+#
+# Needs the repository secret UPDATE_SIGNING_KEY (see scripts/update-signer.swift).
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for a new version
+        id: version
+        run: |
+          version=$(xcodebuild -project PCVL.xcodeproj -scheme PCVL -configuration Release -showBuildSettings 2>/dev/null \
+            | awk '$1 == "MARKETING_VERSION" { print $3; exit }')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released; bump MARKETING_VERSION to publish a new one."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and publish v${{ steps.version.outputs.version }}
+        if: steps.version.outputs.release == 'true'
+        env:
+          PCVL_UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$PCVL_UPDATE_SIGNING_KEY" ]; then
+            echo "::error::Add the UPDATE_SIGNING_KEY repository secret (see scripts/update-signer.swift)."
+            exit 1
+          fi
+          xcodebuild -version
+          scripts/release.sh --publish

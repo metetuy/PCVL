@@ -1,10 +1,14 @@
-// Signs PCVL update archives with an Ed25519 key kept in the login Keychain.
-// The app embeds the public key (UpdateInstaller.publicKey) and refuses any
-// download whose signature doesn't verify.
+// Signs PCVL update archives with an Ed25519 key kept in the login Keychain, or
+// in PCVL_UPDATE_SIGNING_KEY on CI (the GitHub secret UPDATE_SIGNING_KEY). The app
+// embeds the public key (UpdateInstaller.publicKey) and refuses any download
+// whose signature doesn't verify.
 //
 //   swift scripts/update-signer.swift generate-keys   creates the key once, prints the public key
 //   swift scripts/update-signer.swift public-key      prints the public key again
 //   swift scripts/update-signer.swift sign <file>     prints the file's signature (base64)
+//
+// Copying the private key for the GitHub secret:
+//   security find-generic-password -s "PCVL Update Signing" -a ed25519 -w | pbcopy
 
 import CryptoKit
 import Foundation
@@ -19,6 +23,14 @@ func fail(_ message: String) -> Never {
 }
 
 func storedPrivateKey() -> Curve25519.Signing.PrivateKey? {
+    if let text = ProcessInfo.processInfo.environment["PCVL_UPDATE_SIGNING_KEY"], !text.isEmpty {
+        guard let raw = Data(base64Encoded: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) else {
+            fail("PCVL_UPDATE_SIGNING_KEY isn't a base64 Ed25519 private key.")
+        }
+        return key
+    }
+
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,

@@ -6,12 +6,17 @@
 # and optionally publishes all three as a GitHub release tagged v<version>.
 #
 # Before running: bump MARKETING_VERSION (the version users see, compared by the
-# updater) and CURRENT_PROJECT_VERSION, commit and push.
+# updater) and CURRENT_PROJECT_VERSION, commit and push. Pushing such a commit to
+# main runs this on GitHub Actions (.github/workflows/release.yml) instead.
 #
-#   scripts/release.sh
+#   scripts/release.sh             builds, then asks before publishing (with gh)
+#   scripts/release.sh --publish   builds and publishes without asking (CI)
 
 set -euo pipefail
 cd "${0:A:h}/.."
+
+PUBLISH=false
+[[ "${1:-}" == "--publish" ]] && PUBLISH=true
 
 BUILD=build
 ARCHIVE="$BUILD/PCVL.xcarchive"
@@ -102,10 +107,18 @@ Already installed? PCVL updates itself (Settings › Updates).
 The .zip and .zip.sig files are used by the in-app updater."
 
 if command -v gh >/dev/null; then
-    read "answer?Create release v$VERSION on GitHub now? [y/N] "
-    if [[ "$answer" == [yY] ]]; then
-        gh release create "v$VERSION" "$DMG" "$ZIP" "$ZIP.sig" --title "PCVL $VERSION" --notes "$NOTES" --generate-notes
+    if ! $PUBLISH; then
+        read "answer?Create release v$VERSION on GitHub now? [y/N] "
+        [[ "$answer" == [yY] ]] && PUBLISH=true
     fi
+    if $PUBLISH; then
+        # On CI the tag goes on the commit that was built, not on whatever main is by then.
+        gh release create "v$VERSION" "$DMG" "$ZIP" "$ZIP.sig" --title "PCVL $VERSION" --notes "$NOTES" --generate-notes \
+            ${GITHUB_SHA:+--target=$GITHUB_SHA}
+    fi
+elif $PUBLISH; then
+    echo "--publish needs the gh command." >&2
+    exit 1
 else
     echo "Upload them at https://github.com/metetuy/PCVL/releases/new (or install gh to do it from here)."
     echo "Suggested release notes:"
