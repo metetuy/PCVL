@@ -1,17 +1,25 @@
 // Draws the DMG window background: just an arrow from the app to the Applications
 // shortcut, at 1x and 2x (release.sh combines them into one Retina-aware TIFF).
-// Positions match the icon positions in release.sh.
+// release.sh passes the window size and the arrow's position, so they always
+// match its icon layout.
 //
 // The slate background keeps Finder's icon labels readable in both appearances:
 // Finder draws them black in Light Mode and white in Dark Mode.
 //
-//   swift scripts/dmg-background.swift <output folder>
+//   swift scripts/dmg-background.swift <output folder> <width> <height> <arrow from x> <arrow to x> <arrow y>
 
 import AppKit
 
-// The window shows 560x300; the extra height covers title bar differences.
-let size = NSSize(width: 560, height: 320)
-let output = URL(fileURLWithPath: CommandLine.arguments[1])
+let arguments = CommandLine.arguments
+let numbers = arguments.dropFirst(2).compactMap(Double.init)
+guard arguments.count == 7, numbers.count == 5 else {
+    FileHandle.standardError.write(Data("Usage: dmg-background.swift <output folder> <width> <height> <arrow from x> <arrow to x> <arrow y>\n".utf8))
+    exit(1)
+}
+let output = URL(fileURLWithPath: arguments[1])
+let size = NSSize(width: numbers[0], height: numbers[1])
+// Measured from the top, like Finder's icon positions; AppKit's y runs from the bottom.
+let (arrowFrom, arrowTo, arrowY) = (numbers[2], numbers[3], numbers[1] - numbers[4])
 
 func render(scale: CGFloat) -> Data {
     let rep = NSBitmapImageRep(
@@ -29,15 +37,12 @@ func render(scale: CGFloat) -> Data {
         ending: NSColor(srgbRed: 0.40, green: 0.45, blue: 0.53, alpha: 1)
     )!.draw(in: NSRect(origin: .zero, size: size), angle: -90)
 
-    // Arrow between the icons, centered at x 150 and 410, y 140 from the top (Finder's
-    // coordinates; AppKit's run from the bottom).
-    let y = size.height - 140
     let arrow = NSBezierPath()
-    arrow.move(to: NSPoint(x: 236, y: y))
-    arrow.line(to: NSPoint(x: 322, y: y))
-    arrow.move(to: NSPoint(x: 306, y: y + 14))
-    arrow.line(to: NSPoint(x: 322, y: y))
-    arrow.line(to: NSPoint(x: 306, y: y - 14))
+    arrow.move(to: NSPoint(x: arrowFrom, y: arrowY))
+    arrow.line(to: NSPoint(x: arrowTo, y: arrowY))
+    arrow.move(to: NSPoint(x: arrowTo - 16, y: arrowY + 14))
+    arrow.line(to: NSPoint(x: arrowTo, y: arrowY))
+    arrow.line(to: NSPoint(x: arrowTo - 16, y: arrowY - 14))
     arrow.lineWidth = 4
     arrow.lineCapStyle = .round
     arrow.lineJoinStyle = .round

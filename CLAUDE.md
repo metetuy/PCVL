@@ -95,8 +95,8 @@ PCVL/
     └── Inter-VariableFont_opsz,wght.ttf
 .github/workflows/release.yml      (push to main with a new MARKETING_VERSION → release; otherwise skips)
 scripts/
-├── release.sh                     (archive → build/PCVL-<version>.dmg for installing, .zip + .zip.sig for the updater; optional `gh release create v<version>`)
-├── dmg-background.swift           (DMG window background: slate gradient + arrow, 1x/2x)
+├── release.sh                     (archive → build/PCVL-<version>.dmg for installing, .zip + .zip.sig for the updater; optional `gh release create v<version>`; `--dmg-only` rebuilds and opens just the DMG for layout tweaks)
+├── dmg-background.swift           (DMG window background: slate gradient + arrow, 1x/2x; size and arrow position come from release.sh)
 └── update-signer.swift            (Ed25519 key in the login Keychain: generate-keys / public-key / sign <file>)
 PCVLTests/                         (Swift Testing, hosted in the app; run with ⌘U or `xcodebuild test -scheme PCVL`)
 ├── TimerEngineTests.swift, TimerViewModelTests.swift, StatsAnalyzerTests.swift, StatsSummaryTests.swift, TaskTests.swift, TaskAnalyzerTests.swift, ThemeTests.swift, UpdateTests.swift
