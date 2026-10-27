@@ -13,7 +13,7 @@ import Security
 nonisolated enum UpdateInstaller {
     /// The release key's public half, from `swift scripts/update-signer.swift public-key`.
     /// Empty means updates can be found but not installed.
-    static let publicKey = ""
+    static let publicKey = "EK9L+1ZPn4JN6954BA9+eRKglrMTWpIeKiRibWRJS90="
 
     /// Replaces the app at `appURL` with `release`. The running process keeps working
     /// from the old files until it quits; `relaunch` then opens the new version.
