@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import Combine
 import AppKit
+import SQLite3
 
 // MARK: - Session Type
 
@@ -40,6 +41,49 @@ class SessionRecord {
     }
 }
 
+// MARK: - Store Location
+
+/// The app's own store file. The default SwiftData location of an unsandboxed app is
+/// the shared `~/Library/Application Support/default.store`: any other unsandboxed
+/// SwiftData process (e.g. Apple's icloudmailagent) opening it migrates it to its own
+/// model and drops the sessions and tasks.
+enum StoreLocation {
+    static var url: URL {
+        URL.applicationSupportDirectory
+            .appending(path: Bundle.main.bundleIdentifier ?? "pomodoro.PCVL", directoryHint: .isDirectory)
+            .appending(path: "PCVL.store")
+    }
+
+    private static let legacyURL = URL.applicationSupportDirectory.appending(path: "default.store")
+
+    /// Creates the folder and, on first launch, copies the store of versions that used
+    /// `default.store` — only while it still holds this app's model.
+    static func prepare() -> URL {
+        let fileManager = FileManager.default
+        let url = url
+        try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard !fileManager.fileExists(atPath: url.path), holdsSessions(legacyURL) else { return url }
+        for suffix in ["", "-wal", "-shm"] {
+            let source = URL(filePath: legacyURL.path + suffix)
+            guard fileManager.fileExists(atPath: source.path) else { continue }
+            try? fileManager.copyItem(at: source, to: URL(filePath: url.path + suffix))
+        }
+        return url
+    }
+
+    /// Whether the store at `url` has a `SessionRecord` table (read only).
+    private static func holdsSessions(_ url: URL) -> Bool {
+        var db: OpaquePointer?
+        defer { sqlite3_close(db) }
+        guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return false }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let query = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ZSESSIONRECORD'"
+        guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else { return false }
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+}
+
 // MARK: - Statistics Manager
 
 @MainActor
@@ -60,7 +104,9 @@ final class StatisticsManager {
     /// `inMemory` keeps records out of the user's store (used by tests).
     init(inMemory: Bool = false) {
         let schema = Schema([SessionRecord.self, FocusTask.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
+        let config = inMemory
+            ? ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            : ModelConfiguration(schema: schema, url: StoreLocation.prepare())
         do {
             modelContainer = try ModelContainer(for: schema, configurations: [config])
             modelContext = modelContainer.mainContext
